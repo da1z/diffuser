@@ -11,6 +11,7 @@ import {
 	ContinuousPatchDiff,
 	continuousDiffViewOptions,
 	type FileDiffRendererProps,
+	LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD,
 	loadReviewSession,
 } from "./review-app";
 
@@ -41,6 +42,20 @@ diff --git a/a.txt b/a.txt
 -old
 +new
 `;
+
+const patchWithRenderedRows = (fileName: string, rows: number) => {
+	const lines = Array.from(
+		{ length: rows },
+		(_, index) => ` unchanged ${fileName} ${index + 1}`
+	).join("\n");
+
+	return `diff --git a/${fileName} b/${fileName}
+--- a/${fileName}
++++ b/${fileName}
+@@ -1,${rows} +1,${rows} @@
+${lines}
+`;
+};
 
 const reviewSession = (
 	overrides: Partial<ReviewSession> = {}
@@ -265,6 +280,63 @@ test("keeps repeated file entries independent in the Local Review UI", () => {
 		"true",
 		"false",
 	]);
+
+	act(() => {
+		root.unmount();
+	});
+});
+
+test("default-collapses large rendered file diffs without marking them viewed", () => {
+	const largePatch = patchWithRenderedRows(
+		"large.txt",
+		LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD + 1
+	);
+	const smallPatch = patchWithRenderedRows(
+		"small.txt",
+		LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD - 1
+	);
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff DiffRenderer={FileDiffProbe} patch={largePatch} />
+	);
+	const largeFile = () =>
+		container.querySelector<HTMLElement>('[data-file="large.txt"]');
+	const largeViewed = () =>
+		container.querySelector<HTMLInputElement>(
+			'input[aria-label="Mark large.txt viewed"]'
+		);
+	const largeCollapseToggle = () =>
+		container.querySelector<HTMLButtonElement>(
+			'button[aria-label="Toggle large.txt collapsed"]'
+		);
+
+	expect(largeFile()?.dataset.collapsed).toBe("true");
+	expect(largeViewed()?.checked).toBe(false);
+	expect(container.textContent).not.toContain("large.txt body");
+
+	act(() => {
+		largeCollapseToggle()?.click();
+	});
+
+	expect(largeFile()?.dataset.collapsed).toBe("false");
+	expect(largeViewed()?.checked).toBe(false);
+	expect(container.textContent).toContain("large.txt body");
+
+	act(() => {
+		root.render(
+			<ContinuousPatchDiff DiffRenderer={FileDiffProbe} patch={smallPatch} />
+		);
+	});
+
+	const smallFile = () =>
+		container.querySelector<HTMLElement>('[data-file="small.txt"]');
+	const smallViewed = () =>
+		container.querySelector<HTMLInputElement>(
+			'input[aria-label="Mark small.txt viewed"]'
+		);
+
+	expect(smallFile()?.dataset.collapsed).toBe("false");
+	expect(smallViewed()?.checked).toBe(false);
+	expect(container.textContent).toContain("small.txt body");
 
 	act(() => {
 		root.unmount();

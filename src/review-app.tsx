@@ -36,6 +36,7 @@ export const continuousDiffViewOptions = {
 	diffStyle: "split",
 	hunkSeparators: "line-info-basic",
 } as const satisfies FileDiffOptions<undefined>;
+export const LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD = 200;
 const initialFileReviewState: FileReviewState = {
 	viewed: false,
 	collapsed: false,
@@ -55,6 +56,22 @@ const fileReviewLabel = (fileDiff: ParsedFileDiff) =>
 
 const getFileReviewState = (states: FileReviewStates, key: string) =>
 	states[key] ?? initialFileReviewState;
+
+const renderedHunkRowCount = (fileDiff: ParsedFileDiff) =>
+	fileDiff.hunks.reduce((rowCount, hunk) => rowCount + hunk.splitLineCount, 0);
+
+const initialFileReviewStatesFor = (fileDiffs: readonly ParsedFileDiff[]) =>
+	Object.fromEntries(
+		fileDiffs.map((fileDiff, index) => [
+			fileDiffKey(fileDiff, index),
+			{
+				viewed: false,
+				collapsed:
+					renderedHunkRowCount(fileDiff) >
+					LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD,
+			},
+		])
+	) satisfies FileReviewStates;
 
 interface FileCollapseToggleProps {
 	readonly collapsed: boolean;
@@ -121,13 +138,20 @@ export const ContinuousPatchDiff = ({
 	readonly patch: string;
 	readonly DiffRenderer?: ComponentType<FileDiffRendererProps>;
 }) => {
-	const [fileReviewStates, setFileReviewStates] = useState<FileReviewStates>(
-		{}
-	);
 	const fileDiffs = useMemo(
 		() => parsePatchFiles(patch).flatMap((parsedPatch) => parsedPatch.files),
 		[patch]
 	);
+	const initialFileReviewStates = useMemo(
+		() => initialFileReviewStatesFor(fileDiffs),
+		[fileDiffs]
+	);
+	const [fileReviewStates, setFileReviewStates] = useState<FileReviewStates>(
+		initialFileReviewStates
+	);
+	useEffect(() => {
+		setFileReviewStates(initialFileReviewStates);
+	}, [initialFileReviewStates]);
 	const updateFileReviewState = (
 		key: string,
 		update: (current: FileReviewState) => FileReviewState
