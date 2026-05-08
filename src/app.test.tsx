@@ -73,6 +73,7 @@ const reviewSession = (
 			workingDirectory: "/repo",
 		},
 	},
+	diffFileSnapshots: [],
 	...overrides,
 });
 
@@ -174,6 +175,51 @@ test("configures Pierre hunk affordances for the Continuous Diff View", () => {
 		diffStyle: "split",
 		hunkSeparators: "line-info-basic",
 	});
+});
+
+test("enriches Patch file entries with Diff File Snapshots for expandable hunk context", () => {
+	const patch = `diff --git a/file.txt b/file.txt
+index 1111111..2222222 100644
+--- a/file.txt
++++ b/file.txt
+@@ -3 +3 @@
+-old
++new
+`;
+	const renderedFileDiffs: FileDiffRendererProps["fileDiff"][] = [];
+
+	renderToStaticMarkup(
+		<ContinuousPatchDiff
+			DiffRenderer={({ fileDiff }) => {
+				renderedFileDiffs.push(fileDiff);
+				return <article>{fileDiff.name}</article>;
+			}}
+			diffFileSnapshots={[
+				{
+					status: "available",
+					oldFile: { name: "file.txt", contents: "one\ntwo\nold\nfour\n" },
+					newFile: { name: "file.txt", contents: "one\ntwo\nnew\nfour\n" },
+				},
+			]}
+			patch={patch}
+		/>
+	);
+
+	expect(renderedFileDiffs).toHaveLength(1);
+	expect(renderedFileDiffs[0]?.isPartial).toBe(false);
+	expect(renderedFileDiffs[0]?.deletionLines).toEqual([
+		"one\n",
+		"two\n",
+		"old\n",
+		"four\n",
+	]);
+	expect(renderedFileDiffs[0]?.additionLines).toEqual([
+		"one\n",
+		"two\n",
+		"new\n",
+		"four\n",
+	]);
+	expect(renderedFileDiffs[0]?.hunks[0]?.collapsedBefore).toBe(2);
 });
 
 test("keeps viewed and collapsed file state independent in the Local Review UI", () => {

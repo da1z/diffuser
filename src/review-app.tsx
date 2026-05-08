@@ -1,4 +1,8 @@
-import { type FileDiffOptions, parsePatchFiles } from "@pierre/diffs";
+import {
+	type FileDiffOptions,
+	parsePatchFiles,
+	processFile,
+} from "@pierre/diffs";
 import {
 	FileDiff,
 	type FileDiffMetadata,
@@ -7,7 +11,7 @@ import {
 import { type ComponentType, useEffect, useMemo, useState } from "react";
 
 import { reviewSessionEndpoint } from "./diffuser/protocol";
-import type { ReviewSession } from "./diffuser/workflow";
+import type { DiffFileSnapshot, ReviewSession } from "./diffuser/workflow";
 import "./index.css";
 
 export interface AppProps {
@@ -41,6 +45,7 @@ const initialFileReviewState: FileReviewState = {
 	viewed: false,
 	collapsed: false,
 };
+const emptyDiffFileSnapshots: readonly DiffFileSnapshot[] = [];
 
 const fileDiffKey = (fileDiff: ParsedFileDiff, index: number) =>
 	[
@@ -77,6 +82,42 @@ const initialFileReviewStatesFor = (fileDiffs: readonly ParsedFileDiff[]) =>
 			initialFileReviewStateFor(fileDiff),
 		])
 	) satisfies FileReviewStates;
+
+const splitGitPatchFileEntries = (patch: string) => {
+	const matches = Array.from(patch.matchAll(/^diff --git .+$/gm));
+
+	return matches.map((match, index) => {
+		const start = match.index ?? 0;
+		const nextStart = matches[index + 1]?.index ?? patch.length;
+
+		return patch.slice(start, nextStart);
+	});
+};
+
+const parsedFileDiffsFor = (
+	patch: string,
+	diffFileSnapshots: readonly DiffFileSnapshot[]
+) => {
+	const patchFileEntries = splitGitPatchFileEntries(patch);
+
+	return parsePatchFiles(patch)
+		.flatMap((parsedPatch) => parsedPatch.files)
+		.map((fileDiff, index) => {
+			const snapshot = diffFileSnapshots[index];
+			const patchFileEntry = patchFileEntries[index];
+
+			if (snapshot?.status !== "available" || patchFileEntry === undefined) {
+				return fileDiff;
+			}
+
+			return (
+				processFile(patchFileEntry, {
+					oldFile: snapshot.oldFile,
+					newFile: snapshot.newFile,
+				}) ?? fileDiff
+			);
+		});
+};
 
 interface FileCollapseToggleProps {
 	readonly collapsed: boolean;
@@ -137,15 +178,17 @@ export const loadReviewSession = async (
 };
 
 export const ContinuousPatchDiff = ({
+	diffFileSnapshots = emptyDiffFileSnapshots,
 	patch,
 	DiffRenderer = FileDiff,
 }: {
+	readonly diffFileSnapshots?: readonly DiffFileSnapshot[];
 	readonly patch: string;
 	readonly DiffRenderer?: ComponentType<FileDiffRendererProps>;
 }) => {
 	const fileDiffs = useMemo(
-		() => parsePatchFiles(patch).flatMap((parsedPatch) => parsedPatch.files),
-		[patch]
+		() => parsedFileDiffsFor(patch, diffFileSnapshots),
+		[patch, diffFileSnapshots]
 	);
 	const initialFileReviewStates = useMemo(
 		() => initialFileReviewStatesFor(fileDiffs),
@@ -252,7 +295,10 @@ const ReviewSessionView = ({
 	<main className="app">
 		<ReviewHeader context={session.context} />
 		<section aria-label="Patch">
-			<ContinuousPatchDiff patch={session.patch} />
+			<ContinuousPatchDiff
+				diffFileSnapshots={session.diffFileSnapshots}
+				patch={session.patch}
+			/>
 		</section>
 	</main>
 );

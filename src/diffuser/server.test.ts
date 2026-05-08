@@ -9,6 +9,7 @@ const session: ReviewSession = {
 	mode: "read-only",
 	kind: "diff",
 	patch: "diff --git a/file.txt b/file.txt\n",
+	diffFileSnapshots: [],
 	context: {
 		command: "diffuser diff",
 		args: [],
