@@ -133,6 +133,9 @@ const rangeNumbers = (start: number, end: number) =>
 const isDefined = <Value>(value: Value | undefined): value is Value =>
 	value !== undefined;
 
+const isSafeLineNumber = (lineNumber: number) =>
+	Number.isSafeInteger(lineNumber);
+
 const renderedLinePositionsForHunk = (
 	hunk: Hunk,
 	positions: {
@@ -213,6 +216,19 @@ const positionsForSelection = ({
 	const [start, end] = ascendingRange(selection.start, selection.end);
 	const positionMap =
 		side === "additions" ? positions.additions : positions.deletions;
+	const rangeLength = end - start + 1;
+
+	if (
+		!(
+			isSafeLineNumber(start) &&
+			isSafeLineNumber(end) &&
+			Number.isSafeInteger(rangeLength)
+		) ||
+		rangeLength <= 0 ||
+		rangeLength > positionMap.size
+	) {
+		return [];
+	}
 
 	return rangeNumbers(start, end).map((lineNumber) =>
 		positionMap.get(lineNumber)

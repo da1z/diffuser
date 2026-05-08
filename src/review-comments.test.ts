@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { parsePatchFiles } from "@pierre/diffs";
+import { parsePatchFiles, type SelectedLineRange } from "@pierre/diffs";
 
 import {
 	addSubmittedDraftReviewComment,
@@ -25,6 +25,38 @@ const anchor = {
 	startLine: 4,
 	endLine: 4,
 } as const;
+
+const selectionConformancePatch = `diff --git a/src/old.ts b/src/new.ts
+similarity index 90%
+rename from src/old.ts
+rename to src/new.ts
+--- a/src/old.ts
++++ b/src/new.ts
+@@ -10,6 +10,7 @@
+ shared before
+-old first
+-old second
++new first
++new second
+ shared middle
+ shared after
++added tail
+`;
+
+const anchorForSelection = (selection: SelectedLineRange) => {
+	const fileDiff = parsePatchFiles(selectionConformancePatch)[0]?.files[0];
+
+	if (fileDiff === undefined) {
+		throw new Error("Expected parsed file diff.");
+	}
+
+	return draftReviewCommentAnchorForSelection({
+		fileDiff,
+		fileKey: "0\0src/new.ts",
+		fileOrder: 0,
+		selection,
+	});
+};
 
 test("stores non-empty Draft Review Comments and ignores blank submissions", () => {
 	const state = commentState();
@@ -134,4 +166,130 @@ rename to src/new.ts
 		startLine: 10,
 		endLine: 10,
 	});
+});
+
+test("rejects invalid Pierre selections without creating Comment Anchors", () => {
+	expect(
+		anchorForSelection({
+			end: Number.POSITIVE_INFINITY,
+			side: "additions",
+			start: 11,
+		})
+	).toBeUndefined();
+});
+
+test("conforms Pierre side-by-side selections to exported Comment Anchors", () => {
+	const cases: readonly {
+		readonly expected: ReturnType<typeof anchorForSelection> | undefined;
+		readonly name: string;
+		readonly selection: SelectedLineRange;
+	}[] = [
+		{
+			name: "added line",
+			selection: { start: 15, end: 15, side: "additions" },
+			expected: {
+				endLine: 15,
+				fileKey: "0\0src/new.ts",
+				fileOrder: 0,
+				path: "src/new.ts",
+				position: 14,
+				side: "new",
+				startLine: 15,
+			},
+		},
+		{
+			name: "deleted line",
+			selection: { start: 11, end: 11, side: "deletions" },
+			expected: {
+				endLine: 11,
+				fileKey: "0\0src/new.ts",
+				fileOrder: 0,
+				path: "src/old.ts",
+				position: 10,
+				side: "old-deleted",
+				startLine: 11,
+			},
+		},
+		{
+			name: "unchanged context from the new side",
+			selection: { start: 13, end: 14, side: "additions" },
+			expected: {
+				endLine: 14,
+				fileKey: "0\0src/new.ts",
+				fileOrder: 0,
+				path: "src/new.ts",
+				position: 12,
+				side: "new",
+				startLine: 13,
+			},
+		},
+		{
+			name: "unchanged context from the old side",
+			selection: { start: 14, end: 13, side: "deletions" },
+			expected: {
+				endLine: 14,
+				fileKey: "0\0src/new.ts",
+				fileOrder: 0,
+				path: "src/new.ts",
+				position: 12,
+				side: "new",
+				startLine: 13,
+			},
+		},
+		{
+			name: "same-side multi-line addition range",
+			selection: { start: 12, end: 11, side: "additions" },
+			expected: {
+				endLine: 12,
+				fileKey: "0\0src/new.ts",
+				fileOrder: 0,
+				path: "src/new.ts",
+				position: 10,
+				side: "new",
+				startLine: 11,
+			},
+		},
+		{
+			name: "same-side multi-line deletion range",
+			selection: { start: 12, end: 11, side: "deletions" },
+			expected: {
+				endLine: 12,
+				fileKey: "0\0src/new.ts",
+				fileOrder: 0,
+				path: "src/old.ts",
+				position: 10,
+				side: "old-deleted",
+				startLine: 11,
+			},
+		},
+		{
+			name: "cross-side range",
+			selection: {
+				end: 12,
+				endSide: "additions",
+				side: "deletions",
+				start: 11,
+			},
+			expected: undefined,
+		},
+		{
+			name: "missing selection side",
+			selection: { start: 11, end: 12 },
+			expected: undefined,
+		},
+		{
+			name: "non-rendered line",
+			selection: { start: 99, end: 99, side: "additions" },
+			expected: undefined,
+		},
+		{
+			name: "old-side range crossing deleted and context anchors",
+			selection: { start: 12, end: 13, side: "deletions" },
+			expected: undefined,
+		},
+	];
+
+	for (const { expected, name, selection } of cases) {
+		expect(anchorForSelection(selection), name).toEqual(expected);
+	}
 });
