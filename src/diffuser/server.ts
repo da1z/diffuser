@@ -1,6 +1,7 @@
 import { type Server, serve } from "bun";
 
 import index from "../index.html";
+import { reviewSessionEndpoint, reviewSessionHost } from "./protocol";
 import type { ReviewSession } from "./workflow";
 
 export interface ReviewServerOptions {
@@ -14,10 +15,10 @@ export const serveReviewSession = ({
 	session,
 }: ReviewServerOptions): Server<undefined> =>
 	serve({
-		hostname: "127.0.0.1",
+		hostname: reviewSessionHost,
 		port: 0,
 		routes: {
-			"/api/session": {
+			[reviewSessionEndpoint]: {
 				GET: () => Response.json(session),
 				POST: readOnlyResponse,
 				PUT: readOnlyResponse,

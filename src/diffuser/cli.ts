@@ -2,10 +2,11 @@
 import { spawn } from "bun";
 import { Cause, Effect, Exit, Option } from "effect";
 
+import { formatReviewSessionLine } from "./protocol";
+import { launchReviewSession } from "./runtime";
 import { serveReviewSession } from "./server";
 import {
 	bunGitAdapter,
-	createReviewSession,
 	diffuserHelp,
 	EmptyPatchError,
 	GitError,
@@ -34,9 +35,13 @@ const openBrowser = (url: string) => {
 		});
 	} catch {
 		console.error(
-			`Could not open browser automatically. Review Session: ${url}`
+			`Could not open browser automatically. ${formatReviewSessionLine(url)}`
 		);
 	}
+};
+
+const keepReviewSessionAlive = () => {
+	process.stdin.resume();
 };
 
 const argv = process.argv.slice(2);
@@ -48,11 +53,14 @@ if (parsed.kind === "help") {
 }
 
 const exit = await Effect.runPromiseExit(
-	createReviewSession({
+	launchReviewSession({
 		argv,
 		cwd: process.cwd(),
 		now: () => new Date(),
 		git: bunGitAdapter,
+		serve: (session) => serveReviewSession({ session }),
+		openBrowser,
+		printLine: (line) => console.log(line),
 	})
 );
 
@@ -70,13 +78,4 @@ if (Exit.isFailure(exit)) {
 	process.exit(1);
 }
 
-const server = serveReviewSession({ session: exit.value });
-const url = server.url.toString();
-
-console.log(`Review Session: ${url}`);
-
-if (parsed.openBrowser) {
-	openBrowser(url);
-}
-
-process.stdin.resume();
+keepReviewSessionAlive();
