@@ -30,11 +30,10 @@ interface FileReviewState {
 	readonly viewed: boolean;
 }
 type FileReviewStates = Record<string, FileReviewState | undefined>;
-export interface FileDiffRendererProps
-	extends Pick<
-		FileDiffProps<undefined>,
-		"fileDiff" | "options" | "renderHeaderMetadata" | "renderHeaderPrefix"
-	> {}
+export type FileDiffRendererProps = Pick<
+	FileDiffProps<undefined>,
+	"fileDiff" | "options" | "renderHeaderMetadata" | "renderHeaderPrefix"
+>;
 
 export const continuousDiffViewOptions = {
 	diffStyle: "split",
@@ -83,7 +82,7 @@ const initialFileReviewStatesFor = (fileDiffs: readonly ParsedFileDiff[]) =>
 		])
 	) satisfies FileReviewStates;
 
-const splitGitPatchFileEntries = (patch: string) => {
+const splitPatchIntoFileEntries = (patch: string) => {
 	const matches = Array.from(patch.matchAll(/^diff --git .+$/gm));
 
 	return matches.map((match, index) => {
@@ -94,29 +93,42 @@ const splitGitPatchFileEntries = (patch: string) => {
 	});
 };
 
+const enrichFileDiffWithSnapshot = ({
+	fileDiff,
+	patchFileEntry,
+	snapshot,
+}: {
+	readonly fileDiff: ParsedFileDiff;
+	readonly patchFileEntry: string | undefined;
+	readonly snapshot: DiffFileSnapshot | undefined;
+}) => {
+	if (snapshot?.status !== "available" || patchFileEntry === undefined) {
+		return fileDiff;
+	}
+
+	return (
+		processFile(patchFileEntry, {
+			oldFile: snapshot.oldFile,
+			newFile: snapshot.newFile,
+		}) ?? fileDiff
+	);
+};
+
 const parsedFileDiffsFor = (
 	patch: string,
 	diffFileSnapshots: readonly DiffFileSnapshot[]
 ) => {
-	const patchFileEntries = splitGitPatchFileEntries(patch);
+	const patchFileEntries = splitPatchIntoFileEntries(patch);
 
 	return parsePatchFiles(patch)
 		.flatMap((parsedPatch) => parsedPatch.files)
-		.map((fileDiff, index) => {
-			const snapshot = diffFileSnapshots[index];
-			const patchFileEntry = patchFileEntries[index];
-
-			if (snapshot?.status !== "available" || patchFileEntry === undefined) {
-				return fileDiff;
-			}
-
-			return (
-				processFile(patchFileEntry, {
-					oldFile: snapshot.oldFile,
-					newFile: snapshot.newFile,
-				}) ?? fileDiff
-			);
-		});
+		.map((fileDiff, index) =>
+			enrichFileDiffWithSnapshot({
+				fileDiff,
+				patchFileEntry: patchFileEntries[index],
+				snapshot: diffFileSnapshots[index],
+			})
+		);
 };
 
 interface FileCollapseToggleProps {
