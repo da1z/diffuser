@@ -1,16 +1,12 @@
 import { expect, test } from "bun:test";
 
 import { formatCommentAnchorLocation } from "./comment-anchor-location";
-import type { DraftReviewCommentAnchor } from "./review-comments";
 
 const anchor = (
-	overrides: Partial<DraftReviewCommentAnchor>
-): DraftReviewCommentAnchor => ({
+	overrides: Partial<Parameters<typeof formatCommentAnchorLocation>[0]>
+): Parameters<typeof formatCommentAnchorLocation>[0] => ({
 	endLine: 12,
-	fileKey: "0\0src/file.ts",
-	fileOrder: 0,
 	path: "src/file.ts",
-	position: 12,
 	side: "new",
 	startLine: 12,
 	...overrides,

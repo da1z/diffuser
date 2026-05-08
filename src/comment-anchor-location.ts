@@ -8,6 +8,11 @@ type CommentAnchorLocation = Pick<
 	"endLine" | "path" | "side" | "startLine"
 >;
 
+const commentAnchorSideLabels = {
+	new: "new",
+	"old-deleted": "old/deleted",
+} satisfies Record<DraftReviewCommentSide, string>;
+
 export const formatCommentAnchorLineRange = ({
 	endLine,
 	startLine,
@@ -16,7 +21,7 @@ export const formatCommentAnchorLineRange = ({
 
 export const formatCommentAnchorSideLabel = (
 	side: DraftReviewCommentSide
-): string => (side === "old-deleted" ? "old/deleted" : "new");
+): string => commentAnchorSideLabels[side];
 
 export const formatCommentAnchorLocation = (anchor: CommentAnchorLocation) =>
 	`${anchor.path}:${formatCommentAnchorLineRange(anchor)} [${formatCommentAnchorSideLabel(anchor.side)}]`;
