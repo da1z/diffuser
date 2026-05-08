@@ -11,6 +11,7 @@ import {
 } from "@pierre/diffs/react";
 import { type ComponentType, useEffect, useMemo, useState } from "react";
 
+import { formatCommentAnchorLocation } from "./comment-anchor-location";
 import { alignPatchFileEntries } from "./diffuser/patch-file-entries";
 import {
 	reviewSessionEndpoint,
@@ -78,17 +79,6 @@ const copyReviewErrorMessage = "Could not copy review.";
 
 const fileReviewLabel = (fileDiff: ParsedFileDiff) =>
 	fileDiff.name ?? fileDiff.prevName ?? "file";
-
-const draftReviewCommentSideLabel = (anchor: DraftReviewCommentAnchor) =>
-	anchor.side === "old-deleted" ? "old/deleted" : "new";
-
-const draftReviewCommentLineLabel = (anchor: DraftReviewCommentAnchor) =>
-	anchor.startLine === anchor.endLine
-		? String(anchor.startLine)
-		: `${anchor.startLine}-${anchor.endLine}`;
-
-const draftReviewCommentLocation = (anchor: DraftReviewCommentAnchor) =>
-	`${anchor.path}:${draftReviewCommentLineLabel(anchor)} [${draftReviewCommentSideLabel(anchor)}]`;
 
 const draftReviewCommentFormLinePrefix = (anchor: DraftReviewCommentAnchor) =>
 	anchor.side === "old-deleted" ? "L" : "R";
@@ -390,7 +380,7 @@ const SubmittedDraftReviewCommentView = ({
 }) => (
 	<article className="draft-review-comment" data-draft-comment="">
 		<div className="draft-review-comment-location">
-			{draftReviewCommentLocation(comment.anchor)}
+			{formatCommentAnchorLocation(comment.anchor)}
 		</div>
 		<p>{comment.body}</p>
 		<button
