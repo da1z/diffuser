@@ -20,6 +20,11 @@ import {
 import { reviewSessionFromSessionEndpointPayload } from "./diffuser/session-endpoint-payload";
 import type { DiffFileSnapshot, ReviewSession } from "./diffuser/workflow";
 import {
+	confirmClearDraftReviewComments as confirmClearDraftReviewCommentsPolicy,
+	copyDraftReviewCommentsToClipboard,
+	type DraftReviewCommentCopyClearState,
+} from "./draft-review-comment-copy-clear-policy";
+import {
 	type FileReviewStates,
 	fileDiffKey,
 	getFileReviewState,
@@ -28,7 +33,6 @@ import {
 	toggleFileCollapsed,
 } from "./file-review-state";
 import {
-	clearSubmittedDraftReviewComments,
 	type DraftReviewCommentAnchor,
 	type DraftReviewCommentState,
 	deleteSubmittedDraftReviewComment,
@@ -38,7 +42,6 @@ import {
 	type SubmittedDraftReviewComment,
 	submitDraftReviewComment,
 } from "./review-comments";
-import { formatReviewSummary } from "./review-summary";
 import "./index.css";
 
 export interface AppProps {
@@ -76,8 +79,6 @@ export const continuousDiffViewOptions = {
 } as const satisfies FileDiffOptions<undefined>;
 
 const emptyDiffFileSnapshots: readonly DiffFileSnapshot[] = [];
-const copyReviewErrorMessage = "Could not copy review.";
-
 const fileReviewLabel = (fileDiff: ParsedFileDiff) =>
 	fileDiff.name ?? fileDiff.prevName ?? "file";
 
@@ -479,6 +480,10 @@ export const ContinuousPatchDiff = ({
 		setActiveDraftReviewCommentSelection,
 	] = useState<SelectedLineRange | null>(null);
 	const [copyError, setCopyError] = useState<string | undefined>();
+	const draftReviewCommentCopyClearState = {
+		copyError,
+		draftReviewCommentState,
+	} satisfies DraftReviewCommentCopyClearState;
 	useEffect(() => {
 		setFileReviewStates(initialFileReviewStates);
 		setDraftReviewCommentState(emptyDraftReviewCommentState());
@@ -526,32 +531,28 @@ export const ContinuousPatchDiff = ({
 			deleteSubmittedDraftReviewComment(state, commentId)
 		);
 	};
-	const clearDraftReviewComments = () => {
-		setDraftReviewCommentState(clearSubmittedDraftReviewComments);
-		setCopyError(undefined);
+	const applyDraftReviewCommentCopyClearState = (
+		state: DraftReviewCommentCopyClearState
+	) => {
+		setDraftReviewCommentState(state.draftReviewCommentState);
+		setCopyError(state.copyError);
 	};
 	const copyReview = () => {
-		const clipboard = navigator.clipboard;
-
-		if (clipboard === undefined) {
-			setCopyError(copyReviewErrorMessage);
-			return;
-		}
-
-		clipboard
-			.writeText(formatReviewSummary(submittedComments))
-			.then(() => {
-				clearDraftReviewComments();
-			})
-			.catch(() => {
-				setCopyError(copyReviewErrorMessage);
-			});
+		copyDraftReviewCommentsToClipboard(
+			draftReviewCommentCopyClearState,
+			navigator.clipboard
+		).then(applyDraftReviewCommentCopyClearState);
 	};
 	const confirmClearDraftReviewComments = () => {
-		// biome-ignore lint/suspicious/noAlert: The PRD requires the browser confirmation dialog for clearing draft comments.
-		if (window.confirm("Clear all draft review comments?")) {
-			clearDraftReviewComments();
-		}
+		applyDraftReviewCommentCopyClearState(
+			confirmClearDraftReviewCommentsPolicy(
+				draftReviewCommentCopyClearState,
+				(message) => {
+					// biome-ignore lint/suspicious/noAlert: The PRD requires the browser confirmation dialog for clearing draft comments.
+					return window.confirm(message);
+				}
+			)
+		);
 	};
 	const renderDraftReviewCommentAnnotation = (
 		annotation: DraftReviewCommentLineAnnotation

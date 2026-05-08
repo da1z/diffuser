@@ -9,6 +9,10 @@ import {
 	reviewSessionShutdownEndpoint,
 } from "./diffuser/protocol";
 import type { ReviewSession } from "./diffuser/workflow";
+import {
+	clearDraftReviewCommentsConfirmationMessage,
+	copyReviewErrorMessage,
+} from "./draft-review-comment-copy-clear-policy";
 import { LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD } from "./file-review-state";
 import {
 	App,
@@ -149,6 +153,34 @@ const viewedControlsFor = (container: Element, label: string) =>
 
 const viewedControlPressedState = (control: HTMLButtonElement | null) =>
 	control?.getAttribute("aria-pressed");
+
+interface ClipboardStub {
+	readonly writeText: (text: string) => Promise<void>;
+}
+
+const stubClipboard = (clipboard: ClipboardStub | undefined) => {
+	Object.defineProperty(window.navigator, "clipboard", {
+		configurable: true,
+		value: clipboard,
+	});
+};
+
+const copyReviewButtonFor = (container: Element) =>
+	container.querySelector<HTMLButtonElement>(
+		'button[aria-label="Copy review"]'
+	);
+
+const clickCopyReview = async (container: Element) => {
+	await act(async () => {
+		copyReviewButtonFor(container)?.click();
+		await Promise.resolve();
+	});
+};
+
+const clearDraftReviewCommentsButtonFor = (container: Element) =>
+	container.querySelector<HTMLButtonElement>(
+		'button[aria-label="Clear draft review comments"]'
+	);
 
 const fileProbeFor = (container: Element, fileName: string, occurrence = 0) =>
 	Array.from(
@@ -889,14 +921,11 @@ test("submits and copies Draft Review Comments from the Local Review UI", async 
 	const { container, root } = renderInteractive(
 		<ContinuousPatchDiff DiffRenderer={FileDiffProbe} patch={multiFilePatch} />
 	);
-	Object.defineProperty(window.navigator, "clipboard", {
-		configurable: true,
-		value: {
-			writeText: (text: string) => {
-				clipboardWrites.push(text);
+	stubClipboard({
+		writeText: (text) => {
+			clipboardWrites.push(text);
 
-				return Promise.resolve();
-			},
+			return Promise.resolve();
 		},
 	});
 
@@ -910,12 +939,7 @@ test("submits and copies Draft Review Comments from the Local Review UI", async 
 			.annotationSide
 	).toBe("additions");
 
-	await act(async () => {
-		container
-			.querySelector<HTMLButtonElement>('button[aria-label="Copy review"]')
-			?.click();
-		await Promise.resolve();
-	});
+	await clickCopyReview(container);
 
 	expect(clipboardWrites).toEqual([
 		`a.txt:1 [new]
@@ -936,14 +960,11 @@ test("clears all Draft Review Comments only after browser confirmation", () => {
 	const { container, root } = renderInteractive(
 		<ContinuousPatchDiff DiffRenderer={FileDiffProbe} patch={multiFilePatch} />
 	);
-	Object.defineProperty(window.navigator, "clipboard", {
-		configurable: true,
-		value: {
-			writeText: (text: string) => {
-				clipboardWrites.push(text);
+	stubClipboard({
+		writeText: (text) => {
+			clipboardWrites.push(text);
 
-				return Promise.resolve();
-			},
+			return Promise.resolve();
 		},
 	});
 	Object.defineProperty(window, "confirm", {
@@ -954,20 +975,20 @@ test("clears all Draft Review Comments only after browser confirmation", () => {
 			return shouldConfirm;
 		},
 	});
-	const clearDraftReviewComments = () =>
-		container.querySelector<HTMLButtonElement>(
-			'button[aria-label="Clear draft review comments"]'
-		);
+	const clearDraftReviewCommentsButton = () =>
+		clearDraftReviewCommentsButtonFor(container);
 
 	submitDraftReviewComment(container, "Clear this only after confirmation.");
 
-	expect(clearDraftReviewComments()).not.toBeNull();
+	expect(clearDraftReviewCommentsButton()).not.toBeNull();
 
 	act(() => {
-		clearDraftReviewComments()?.click();
+		clearDraftReviewCommentsButton()?.click();
 	});
 
-	expect(confirmationMessages).toEqual(["Clear all draft review comments?"]);
+	expect(confirmationMessages).toEqual([
+		clearDraftReviewCommentsConfirmationMessage,
+	]);
 	expect(container.textContent).toContain(
 		"Clear this only after confirmation."
 	);
@@ -975,12 +996,12 @@ test("clears all Draft Review Comments only after browser confirmation", () => {
 
 	shouldConfirm = true;
 	act(() => {
-		clearDraftReviewComments()?.click();
+		clearDraftReviewCommentsButton()?.click();
 	});
 
 	expect(confirmationMessages).toEqual([
-		"Clear all draft review comments?",
-		"Clear all draft review comments?",
+		clearDraftReviewCommentsConfirmationMessage,
+		clearDraftReviewCommentsConfirmationMessage,
 	]);
 	expect(container.textContent).not.toContain(
 		"Clear this only after confirmation."
@@ -1038,10 +1059,8 @@ test("surfaces per-file Draft Review Comment counts independently from viewed an
 		container.querySelector<HTMLButtonElement>(
 			'button[aria-label="Toggle b.txt collapsed"]'
 		);
-	const clearDraftReviewComments = () =>
-		container.querySelector<HTMLButtonElement>(
-			'button[aria-label="Clear draft review comments"]'
-		);
+	const clearDraftReviewCommentsButton = () =>
+		clearDraftReviewCommentsButtonFor(container);
 
 	expect(
 		fileDraftReviewCommentCountTextFor(container, "a.txt")
@@ -1098,7 +1117,7 @@ test("surfaces per-file Draft Review Comment counts independently from viewed an
 	expect(bFile()?.dataset.collapsed).toBe("true");
 
 	act(() => {
-		clearDraftReviewComments()?.click();
+		clearDraftReviewCommentsButton()?.click();
 	});
 
 	expect(
@@ -1258,24 +1277,16 @@ test("keeps Draft Review Comments when copying fails", async () => {
 	const { container, root } = renderInteractive(
 		<ContinuousPatchDiff DiffRenderer={FileDiffProbe} patch={multiFilePatch} />
 	);
-	Object.defineProperty(window.navigator, "clipboard", {
-		configurable: true,
-		value: {
-			writeText: () => Promise.reject(new Error("Clipboard blocked.")),
-		},
+	stubClipboard({
+		writeText: () => Promise.reject(new Error("Clipboard blocked.")),
 	});
 
 	submitDraftReviewComment(container, "Do not lose this.");
 
-	await act(async () => {
-		container
-			.querySelector<HTMLButtonElement>('button[aria-label="Copy review"]')
-			?.click();
-		await Promise.resolve();
-	});
+	await clickCopyReview(container);
 
 	expect(container.textContent).toContain("Do not lose this.");
-	expect(container.textContent).toContain("Could not copy review.");
+	expect(container.textContent).toContain(copyReviewErrorMessage);
 
 	act(() => {
 		root.unmount();
@@ -1286,24 +1297,16 @@ test("keeps Draft Review Comments when clipboard copying is unavailable", async 
 	const { container, root } = renderInteractive(
 		<ContinuousPatchDiff DiffRenderer={FileDiffProbe} patch={multiFilePatch} />
 	);
-	Object.defineProperty(window.navigator, "clipboard", {
-		configurable: true,
-		value: undefined,
-	});
+	stubClipboard(undefined);
 
 	submitDraftReviewComment(container, "Keep this without clipboard access.");
 
-	await act(async () => {
-		container
-			.querySelector<HTMLButtonElement>('button[aria-label="Copy review"]')
-			?.click();
-		await Promise.resolve();
-	});
+	await clickCopyReview(container);
 
 	expect(container.textContent).toContain(
 		"Keep this without clipboard access."
 	);
-	expect(container.textContent).toContain("Could not copy review.");
+	expect(container.textContent).toContain(copyReviewErrorMessage);
 
 	act(() => {
 		root.unmount();
