@@ -21,6 +21,8 @@ Use this to explore APIs, find usage examples, and understand implementation det
 
 ## Local Package Sources
 
+**IMPORTANT:** Always consult the Pierre source repository before working with `@pierre/diffs`.
+
 The Pierre source repository is cloned to `~/.local/share/pierre/pierre` for reference.
 Use this when working with `@pierre/diffs`, especially React git diff views, package APIs, styling, and debugging behavior that is clearer from source than from package types.
 
