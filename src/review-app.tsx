@@ -522,8 +522,16 @@ export const ContinuousPatchDiff = ({
 		setCopyError(undefined);
 	};
 	const copyReview = () => {
-		navigator.clipboard
-			.writeText(formatReviewSummary(submittedComments))
+		const writeClipboardText = navigator.clipboard?.writeText.bind(
+			navigator.clipboard
+		);
+
+		if (writeClipboardText === undefined) {
+			setCopyError("Could not copy review.");
+			return;
+		}
+
+		writeClipboardText(formatReviewSummary(submittedComments))
 			.then(() => {
 				clearDraftReviewComments();
 			})

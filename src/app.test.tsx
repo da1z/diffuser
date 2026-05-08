@@ -811,6 +811,34 @@ test("keeps Draft Review Comments when copying fails", async () => {
 	});
 });
 
+test("keeps Draft Review Comments when clipboard copying is unavailable", async () => {
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff DiffRenderer={FileDiffProbe} patch={multiFilePatch} />
+	);
+	Object.defineProperty(window.navigator, "clipboard", {
+		configurable: true,
+		value: undefined,
+	});
+
+	submitDraftReviewComment(container, "Keep this without clipboard access.");
+
+	await act(async () => {
+		container
+			.querySelector<HTMLButtonElement>('button[aria-label="Copy review"]')
+			?.click();
+		await Promise.resolve();
+	});
+
+	expect(container.textContent).toContain(
+		"Keep this without clipboard access."
+	);
+	expect(container.textContent).toContain("Could not copy review.");
+
+	act(() => {
+		root.unmount();
+	});
+});
+
 test("rejects Draft Review Comment ranges that normalize across anchor sides", () => {
 	const { currentFileDiff, draftTextarea, root, selectLines } =
 		renderDraftReviewCommentProbe();
