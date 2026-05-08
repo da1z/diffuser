@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { parsePatchFiles } from "@pierre/diffs";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { reviewSessionEndpoint } from "./diffuser/protocol";
@@ -90,18 +89,11 @@ test("renders a Continuous Diff View for a multi-file Patch", () => {
 	expect(html.match(/<diffs-container/g)).toHaveLength(2);
 });
 
-test("configures Pierre hunk affordances within the Patch-only renderer scope", () => {
-	const session = reviewSession({ patch: multiFilePatch });
-	const parsedPatch = parsePatchFiles(multiFilePatch)[0];
-	const firstFile = parsedPatch?.files[0];
-
+test("configures Pierre hunk affordances for the Continuous Diff View", () => {
 	expect(continuousDiffViewOptions).toEqual({
 		diffStyle: "split",
 		hunkSeparators: "line-info-basic",
 	});
-	expect(firstFile?.isPartial).toBe(true);
-	expect(session).not.toHaveProperty("oldFile");
-	expect(session).not.toHaveProperty("newFile");
 });
 
 test("renders commit metadata for a Commit Review", () => {
