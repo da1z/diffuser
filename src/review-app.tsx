@@ -1,14 +1,24 @@
 import {
+	type AnnotationSide,
+	type DiffLineAnnotation,
 	type FileDiffOptions,
 	parsePatchFiles,
 	processFile,
+	type SelectedLineRange,
 } from "@pierre/diffs";
 import {
 	FileDiff,
 	type FileDiffMetadata,
 	type FileDiffProps,
 } from "@pierre/diffs/react";
-import { type ComponentType, useEffect, useMemo, useState } from "react";
+import {
+	type ComponentType,
+	type FormEvent,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 
 import {
 	reviewSessionEndpoint,
@@ -28,14 +38,52 @@ type FetchReviewSession = (
 
 type ParsedFileDiff = FileDiffMetadata;
 type ReviewSessionContext = ReviewSession["context"];
+type DraftReviewAnchorSide = "new" | "old/deleted";
+interface DraftReviewAnchor {
+	readonly endLine: number;
+	readonly path: string;
+	readonly side: DraftReviewAnchorSide;
+	readonly startLine: number;
+}
+interface OpenDraftReviewComment {
+	readonly anchor: DraftReviewAnchor;
+	readonly annotationLine: number;
+	readonly annotationSide: AnnotationSide;
+	readonly fileKey: string;
+	readonly selectedLines: SelectedLineRange;
+}
+interface SubmittedDraftReviewComment {
+	readonly anchor: DraftReviewAnchor;
+	readonly annotationLine: number;
+	readonly annotationSide: AnnotationSide;
+	readonly body: string;
+	readonly fileKey: string;
+	readonly id: number;
+}
+type DraftReviewAnnotationMetadata =
+	| {
+			readonly anchor: DraftReviewAnchor;
+			readonly kind: "form";
+	  }
+	| {
+			readonly anchor: DraftReviewAnchor;
+			readonly comment: SubmittedDraftReviewComment;
+			readonly kind: "comment";
+	  };
 interface FileReviewState {
 	readonly collapsed: boolean;
 	readonly viewed: boolean;
 }
 type FileReviewStates = Record<string, FileReviewState | undefined>;
 export type FileDiffRendererProps = Pick<
-	FileDiffProps<undefined>,
-	"fileDiff" | "options" | "renderHeaderMetadata" | "renderHeaderPrefix"
+	FileDiffProps<DraftReviewAnnotationMetadata>,
+	| "fileDiff"
+	| "lineAnnotations"
+	| "options"
+	| "renderAnnotation"
+	| "renderHeaderMetadata"
+	| "renderHeaderPrefix"
+	| "selectedLines"
 >;
 
 export const continuousDiffViewOptions = {
@@ -61,6 +109,14 @@ const fileDiffKey = (fileDiff: ParsedFileDiff, index: number) =>
 const fileReviewLabel = (fileDiff: ParsedFileDiff) =>
 	fileDiff.name ?? fileDiff.prevName ?? "file";
 
+const draftReviewAnchorPath = (
+	fileDiff: ParsedFileDiff,
+	side: DraftReviewAnchorSide
+) =>
+	side === "old/deleted"
+		? (fileDiff.prevName ?? fileDiff.name ?? "file")
+		: (fileDiff.name ?? fileDiff.prevName ?? "file");
+
 const getFileReviewState = (states: FileReviewStates, key: string) =>
 	states[key] ?? initialFileReviewState;
 
@@ -69,6 +125,122 @@ const renderedSplitHunkRowCount = (fileDiff: ParsedFileDiff) =>
 
 const shouldDefaultCollapseFileDiff = (fileDiff: ParsedFileDiff) =>
 	renderedSplitHunkRowCount(fileDiff) > LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD;
+
+const draftReviewLocation = (anchor: DraftReviewAnchor) => {
+	const linePart =
+		anchor.startLine === anchor.endLine
+			? String(anchor.startLine)
+			: `${anchor.startLine}-${anchor.endLine}`;
+
+	return `${anchor.path}:${linePart} [${anchor.side}]`;
+};
+
+const lineAnchorFor = ({
+	fileDiff,
+	lineNumber,
+	side,
+}: {
+	readonly fileDiff: ParsedFileDiff;
+	readonly lineNumber: number;
+	readonly side: AnnotationSide;
+}):
+	| { readonly lineNumber: number; readonly side: DraftReviewAnchorSide }
+	| undefined => {
+	if (side === "additions") {
+		return { lineNumber, side: "new" };
+	}
+
+	const lineIndex = lineNumber - 1;
+	for (const hunk of fileDiff.hunks) {
+		for (const content of hunk.hunkContent) {
+			if (content.type === "context") {
+				const deletionStart = content.deletionLineIndex;
+				const deletionEnd = deletionStart + content.lines - 1;
+				if (lineIndex >= deletionStart && lineIndex <= deletionEnd) {
+					return {
+						lineNumber:
+							content.additionLineIndex + (lineIndex - deletionStart) + 1,
+						side: "new",
+					};
+				}
+				continue;
+			}
+
+			const deletionStart = content.deletionLineIndex;
+			const deletionEnd = deletionStart + content.deletions - 1;
+			if (lineIndex >= deletionStart && lineIndex <= deletionEnd) {
+				return { lineNumber, side: "old/deleted" };
+			}
+		}
+	}
+
+	return;
+};
+
+const draftReviewAnchorForSelection = ({
+	fileDiff,
+	range,
+}: {
+	readonly fileDiff: ParsedFileDiff;
+	readonly range: SelectedLineRange;
+}): DraftReviewAnchor | undefined => {
+	const side = range.side ?? "additions";
+	const endSide = range.endSide ?? side;
+	if (side !== endSide) {
+		return;
+	}
+
+	const selectedStart = Math.min(range.start, range.end);
+	const selectedEnd = Math.max(range.start, range.end);
+	const lines = Array.from(
+		{ length: selectedEnd - selectedStart + 1 },
+		(_, index) => selectedStart + index
+	);
+	const anchors = lines
+		.map((lineNumber) => lineAnchorFor({ fileDiff, lineNumber, side }))
+		.filter(
+			(anchor): anchor is NonNullable<typeof anchor> => anchor !== undefined
+		);
+	const anchorSide = anchors[0]?.side;
+	if (
+		anchors.length !== lines.length ||
+		anchorSide === undefined ||
+		anchors.some((anchor) => anchor.side !== anchorSide)
+	) {
+		return;
+	}
+	const anchorLines = anchors.map((anchor) => anchor.lineNumber);
+
+	return {
+		path: draftReviewAnchorPath(fileDiff, anchorSide),
+		side: anchorSide,
+		startLine: Math.min(...anchorLines),
+		endLine: Math.max(...anchorLines),
+	};
+};
+
+const draftReviewAnnotationFor = (
+	comment: SubmittedDraftReviewComment
+): DiffLineAnnotation<DraftReviewAnnotationMetadata> => ({
+	lineNumber: comment.annotationLine,
+	metadata: {
+		anchor: comment.anchor,
+		comment,
+		kind: "comment",
+	},
+	side: comment.annotationSide,
+});
+
+const openDraftReviewAnnotationFor = (
+	comment: OpenDraftReviewComment
+): DiffLineAnnotation<DraftReviewAnnotationMetadata> => ({
+	lineNumber: comment.annotationLine,
+	metadata: {
+		anchor: comment.anchor,
+		kind: "form",
+	},
+	side: comment.annotationSide,
+});
 
 const initialFileReviewStateFor = (
 	fileDiff: ParsedFileDiff
@@ -237,6 +409,74 @@ const ViewedFileControl = ({
 	</button>
 );
 
+interface DraftReviewCommentFormProps {
+	readonly anchor: DraftReviewAnchor;
+	readonly onCancel: () => void;
+	readonly onSubmit: (body: string) => void;
+}
+
+const DraftReviewCommentForm = ({
+	anchor,
+	onCancel,
+	onSubmit,
+}: DraftReviewCommentFormProps) => {
+	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const submit = (event: FormEvent) => {
+		event.preventDefault();
+		onSubmit(textareaRef.current?.value ?? "");
+	};
+
+	return (
+		<form className="draft-review-comment-form" onSubmit={submit}>
+			<p className="draft-review-comment-location">
+				{draftReviewLocation(anchor)}
+			</p>
+			<textarea
+				aria-label="Draft review comment"
+				className="draft-review-comment-textarea"
+				placeholder="Leave a comment"
+				ref={textareaRef}
+			/>
+			<div className="draft-review-comment-actions">
+				<button aria-label="Submit draft review comment" type="submit">
+					Comment
+				</button>
+				<button
+					aria-label="Cancel draft review comment"
+					onClick={onCancel}
+					type="button"
+				>
+					Cancel
+				</button>
+			</div>
+		</form>
+	);
+};
+
+interface SubmittedDraftReviewCommentViewProps {
+	readonly comment: SubmittedDraftReviewComment;
+	readonly onDiscard: () => void;
+}
+
+const SubmittedDraftReviewCommentView = ({
+	comment,
+	onDiscard,
+}: SubmittedDraftReviewCommentViewProps) => (
+	<article className="draft-review-comment" data-draft-comment="">
+		<div className="draft-review-comment-location">
+			{draftReviewLocation(comment.anchor)}
+		</div>
+		<p>{comment.body}</p>
+		<button
+			aria-label="Discard draft review comment"
+			onClick={onDiscard}
+			type="button"
+		>
+			Delete
+		</button>
+	</article>
+);
+
 export const loadReviewSession = async (
 	fetchSession: FetchReviewSession = fetch
 ): Promise<ReviewSession> => {
@@ -282,6 +522,12 @@ export const ContinuousPatchDiff = ({
 	const [fileReviewStates, setFileReviewStates] = useState<FileReviewStates>(
 		initialFileReviewStates
 	);
+	const [openDraftReviewComment, setOpenDraftReviewComment] = useState<
+		OpenDraftReviewComment | undefined
+	>();
+	const [submittedDraftReviewComments, setSubmittedDraftReviewComments] =
+		useState<readonly SubmittedDraftReviewComment[]>([]);
+	const [nextDraftReviewCommentId, setNextDraftReviewCommentId] = useState(1);
 	useEffect(() => {
 		setFileReviewStates(initialFileReviewStates);
 	}, [initialFileReviewStates]);
@@ -306,6 +552,71 @@ export const ContinuousPatchDiff = ({
 			collapsed: !current.collapsed,
 		}));
 	};
+	const openDraftReviewCommentForSelection = (
+		key: string,
+		fileDiff: ParsedFileDiff,
+		range: SelectedLineRange | null
+	) => {
+		if (range === null) {
+			setOpenDraftReviewComment(undefined);
+			return;
+		}
+
+		const anchor = draftReviewAnchorForSelection({ fileDiff, range });
+		if (anchor === undefined) {
+			setOpenDraftReviewComment(undefined);
+			return;
+		}
+
+		const annotationSide: AnnotationSide =
+			anchor.side === "old/deleted" ? "deletions" : "additions";
+		const selectedLines =
+			range.side === undefined
+				? {
+						end: Math.max(range.start, range.end),
+						start: Math.min(range.start, range.end),
+					}
+				: {
+						end: Math.max(range.start, range.end),
+						side: range.side,
+						start: Math.min(range.start, range.end),
+					};
+		setOpenDraftReviewComment({
+			anchor,
+			annotationLine: anchor.endLine,
+			annotationSide,
+			fileKey: key,
+			selectedLines,
+		});
+	};
+	const submitDraftReviewComment = (
+		comment: OpenDraftReviewComment,
+		body: string
+	) => {
+		const trimmedBody = body.trim();
+		setOpenDraftReviewComment(undefined);
+		if (trimmedBody.length === 0) {
+			return;
+		}
+
+		setSubmittedDraftReviewComments((comments) => [
+			...comments,
+			{
+				anchor: comment.anchor,
+				annotationLine: comment.annotationLine,
+				annotationSide: comment.annotationSide,
+				body: trimmedBody,
+				fileKey: comment.fileKey,
+				id: nextDraftReviewCommentId,
+			},
+		]);
+		setNextDraftReviewCommentId((id) => id + 1);
+	};
+	const discardDraftReviewComment = (commentId: number) => {
+		setSubmittedDraftReviewComments((comments) =>
+			comments.filter((comment) => comment.id !== commentId)
+		);
+	};
 
 	return (
 		<>
@@ -313,14 +624,61 @@ export const ContinuousPatchDiff = ({
 				const key = fileDiffKey(fileDiff, index);
 				const fileReviewState = getFileReviewState(fileReviewStates, key);
 				const label = fileReviewLabel(fileDiff);
+				const submittedAnnotations = submittedDraftReviewComments
+					.filter((comment) => comment.fileKey === key)
+					.map(draftReviewAnnotationFor);
+				const lineAnnotations =
+					openDraftReviewComment?.fileKey === key
+						? [
+								...submittedAnnotations,
+								openDraftReviewAnnotationFor(openDraftReviewComment),
+							]
+						: submittedAnnotations;
 
 				return (
 					<DiffRenderer
 						fileDiff={fileDiff}
 						key={key}
+						lineAnnotations={lineAnnotations}
 						options={{
 							...continuousDiffViewOptions,
 							collapsed: fileReviewState.collapsed,
+							enableLineSelection: true,
+							onLineSelectionEnd: (range) => {
+								openDraftReviewCommentForSelection(key, fileDiff, range);
+							},
+						}}
+						renderAnnotation={(annotation) => {
+							const metadata = annotation.metadata;
+							switch (metadata.kind) {
+								case "form":
+									if (openDraftReviewComment?.fileKey !== key) {
+										return null;
+									}
+
+									return (
+										<DraftReviewCommentForm
+											anchor={metadata.anchor}
+											onCancel={() => {
+												setOpenDraftReviewComment(undefined);
+											}}
+											onSubmit={(body) => {
+												submitDraftReviewComment(openDraftReviewComment, body);
+											}}
+										/>
+									);
+								case "comment":
+									return (
+										<SubmittedDraftReviewCommentView
+											comment={metadata.comment}
+											onDiscard={() => {
+												discardDraftReviewComment(metadata.comment.id);
+											}}
+										/>
+									);
+								default:
+									return null;
+							}
 						}}
 						renderHeaderMetadata={() => (
 							<ViewedFileControl
@@ -340,6 +698,11 @@ export const ContinuousPatchDiff = ({
 								}}
 							/>
 						)}
+						selectedLines={
+							openDraftReviewComment?.fileKey === key
+								? openDraftReviewComment.selectedLines
+								: null
+						}
 					/>
 				);
 			})}
