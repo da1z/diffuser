@@ -9,18 +9,24 @@ body {
 	background: #f8fafc;
 }
 
-.app {
-	max-width: 1200px;
+.review-app {
+	box-sizing: border-box;
+	width: 100%;
 	padding: 24px;
-	margin: 0 auto;
 }
 
 .review-header {
+	max-width: 1200px;
 	padding: 20px;
-	margin-bottom: 24px;
+	margin: 0 auto 24px;
 	background: white;
 	border: 1px solid #e2e8f0;
 	border-radius: 12px;
+}
+
+.review-patch {
+	width: 100%;
+	min-width: 0;
 }
 
 .review-header h1 {
@@ -57,11 +63,19 @@ body {
 	font-weight: 600;
 }
 
+.file-header-metadata {
+	display: inline-flex;
+	gap: 8px;
+	align-items: center;
+	/* Matches Pierre's default header metadata end offset. */
+	margin-right: -8px;
+	white-space: nowrap;
+}
+
 .draft-review-comment-file-count {
 	display: inline-flex;
 	align-items: center;
 	padding: 4px 8px;
-	margin-right: 8px;
 	font-size: 12px;
 	font-weight: 700;
 	color: #1e3a8a;
@@ -77,6 +91,13 @@ body {
 	background: #eff6ff;
 	border: 1px solid #bfdbfe;
 	border-radius: 10px;
+}
+
+.draft-review-comment-title {
+	margin: 0 0 8px;
+	font-size: 14px;
+	font-weight: 700;
+	color: #1e3a8a;
 }
 
 .draft-review-comment-form textarea {

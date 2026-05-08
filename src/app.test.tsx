@@ -107,6 +107,7 @@ const renderInteractive = (children: ReactNode) => {
 		HTMLElement: window.HTMLElement,
 		HTMLInputElement: window.HTMLInputElement,
 		InputEvent: window.InputEvent,
+		KeyboardEvent: window.KeyboardEvent,
 		SVGElement: window.SVGElement,
 		Event: window.Event,
 		MouseEvent: window.MouseEvent,
@@ -163,6 +164,15 @@ const fileDraftReviewCommentCountTextFor = (
 		".draft-review-comment-file-count"
 	)?.textContent;
 
+const fileHeaderMetadataFor = (
+	container: Element,
+	fileName: string,
+	occurrence = 0
+) =>
+	fileProbeFor(container, fileName, occurrence)?.querySelector(
+		".file-header-metadata"
+	);
+
 interface DraftReviewSelectionRange {
 	readonly end: number;
 	readonly endSide?: "deletions" | "additions";
@@ -174,6 +184,32 @@ interface SubmitDraftReviewCommentOptions {
 	readonly fileName?: string;
 	readonly occurrence?: number;
 }
+
+interface PierreDefaultHeaderProbeProps {
+	readonly fileDiff: FileDiffRendererProps["fileDiff"];
+	readonly fileName: string;
+	readonly renderHeaderMetadata: FileDiffRendererProps["renderHeaderMetadata"];
+	readonly renderHeaderPrefix: FileDiffRendererProps["renderHeaderPrefix"];
+}
+
+const PierreDefaultHeaderProbe = ({
+	fileDiff,
+	fileName,
+	renderHeaderMetadata,
+	renderHeaderPrefix,
+}: PierreDefaultHeaderProbeProps) => (
+	<header data-diffs-header="default">
+		<div data-header-content="">
+			{renderHeaderPrefix?.(fileDiff)}
+			<span>{fileName}</span>
+		</div>
+		<div data-metadata="">
+			<span data-deletions-count="">-1</span>
+			<span data-additions-count="">+1</span>
+			<div slot="header-metadata">{renderHeaderMetadata?.(fileDiff)}</div>
+		</div>
+	</header>
+);
 
 const FileDiffProbe = ({
 	fileDiff,
@@ -188,11 +224,12 @@ const FileDiffProbe = ({
 
 	return (
 		<article data-collapsed={String(collapsed)} data-file={fileName}>
-			<header>
-				{renderHeaderPrefix?.(fileDiff)}
-				<span>{fileName}</span>
-				{renderHeaderMetadata?.(fileDiff)}
-			</header>
+			<PierreDefaultHeaderProbe
+				fileDiff={fileDiff}
+				fileName={fileName}
+				renderHeaderMetadata={renderHeaderMetadata}
+				renderHeaderPrefix={renderHeaderPrefix}
+			/>
 			{collapsed ? undefined : (
 				<>
 					<p>{fileName} body</p>
@@ -297,6 +334,10 @@ const renderDraftReviewCommentProbe = () => {
 		rendered.container.querySelector<HTMLTextAreaElement>(
 			'textarea[aria-label="Draft review comment"]'
 		);
+	const draftTitle = () =>
+		rendered.container.querySelector<HTMLHeadingElement>(
+			".draft-review-comment-title"
+		);
 	const selectLines = (range: DraftReviewSelectionRange) => {
 		act(() => {
 			currentFileDiff?.options?.onLineSelected?.(range);
@@ -351,6 +392,7 @@ const renderDraftReviewCommentProbe = () => {
 		commentTexts,
 		currentFileDiff: () => currentFileDiff,
 		discardDraft,
+		draftTitle,
 		draftTextarea,
 		selectLines,
 		submitDraft,
@@ -422,6 +464,18 @@ test("renders a Continuous Diff View for a multi-file Patch", () => {
 
 	expect(html).toContain('aria-label="Patch"');
 	expect(html.match(/<diffs-container/g)).toHaveLength(2);
+});
+
+test("renders the Continuous Diff View in a dedicated full-width region", () => {
+	const html = renderReviewSession(
+		reviewSession({
+			patch: multiFilePatch,
+		})
+	);
+
+	expect(html).toContain('<main class="review-app">');
+	expect(html).toContain('<header class="review-header">');
+	expect(html).toContain('<section aria-label="Patch" class="review-patch">');
 });
 
 test("configures Pierre hunk affordances for the Continuous Diff View", () => {
@@ -589,6 +643,48 @@ index 1111111..2222222 100644
 	await flushInteractiveRender();
 
 	expect(shadowRoot?.textContent).toContain("middle context line 5");
+
+	act(() => {
+		root.unmount();
+	});
+});
+
+test("groups file header metadata controls with Pierre header metadata", () => {
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff DiffRenderer={FileDiffProbe} patch={multiFilePatch} />
+	);
+	const aMetadata = () => fileHeaderMetadataFor(container, "a.txt");
+	const bMetadata = () => fileHeaderMetadataFor(container, "b.txt");
+	const initialAMetadata = aMetadata();
+	const initialBMetadata = bMetadata();
+
+	expect(initialAMetadata).not.toBeNull();
+	expect(initialAMetadata?.textContent).toContain("Viewed");
+	expect(
+		initialAMetadata?.querySelector(".draft-review-comment-file-count")
+	).toBeNull();
+	expect(initialBMetadata).not.toBeNull();
+
+	submitDraftReviewComment(
+		container,
+		"Align this count with the viewed control.",
+		{
+			fileName: "a.txt",
+		}
+	);
+	const commentedAMetadata = aMetadata();
+	const uncommentedBMetadata = bMetadata();
+
+	expect(commentedAMetadata?.textContent).toContain("1 comment");
+	expect(commentedAMetadata?.textContent).toContain("Viewed");
+	expect(
+		commentedAMetadata?.querySelector<HTMLButtonElement>(
+			'button[aria-label="Mark a.txt viewed"]'
+		)
+	).not.toBeNull();
+	expect(
+		uncommentedBMetadata?.querySelector(".draft-review-comment-file-count")
+	).toBeNull();
 
 	act(() => {
 		root.unmount();
@@ -1005,6 +1101,59 @@ test("supports side-aware inline Draft Review Comments in the Local Review UI", 
 	expect(
 		container.querySelector('textarea[aria-label="Draft review comment"]')
 	).toBeNull();
+
+	act(() => {
+		root.unmount();
+	});
+});
+
+test("polishes Draft Review Comment form title and keyboard submission", () => {
+	const { commentTexts, draftTextarea, draftTitle, root, selectLines } =
+		renderDraftReviewCommentProbe();
+
+	selectLines({ start: 2, end: 2, side: "additions" });
+	expect(draftTitle()?.tagName).toBe("H3");
+	expect(draftTitle()?.textContent).toBe("Add a comment on line R2");
+	expect(draftTitle()?.textContent).not.toContain("new-name.txt");
+
+	selectLines({ start: 4, end: 2, side: "additions" });
+	expect(draftTitle()?.textContent).toBe("Add a comment on lines R2 to R4");
+
+	selectLines({ start: 2, end: 2, side: "deletions" });
+	expect(draftTitle()?.textContent).toBe("Add a comment on line L2");
+	expect(draftTitle()?.textContent).not.toContain("old-deleted");
+
+	const textarea = draftTextarea();
+	if (textarea === null) {
+		throw new Error("Expected an open Draft Review Comment form.");
+	}
+	const updateDraftBody = (body: string) => {
+		textarea.value = body;
+		textarea.dispatchEvent(new window.InputEvent("input", { bubbles: true }));
+	};
+	const pressEnterInDraft = (eventInit: KeyboardEventInit = {}) =>
+		textarea.dispatchEvent(
+			new window.KeyboardEvent("keydown", {
+				bubbles: true,
+				cancelable: true,
+				key: "Enter",
+				...eventInit,
+			})
+		);
+
+	updateDraftBody("Plain Enter stays editable.");
+	const plainEnterWasAllowed = pressEnterInDraft();
+	expect(plainEnterWasAllowed).toBe(true);
+	expect(draftTextarea()).toBe(textarea);
+	expect(commentTexts()).toHaveLength(0);
+
+	updateDraftBody("Submit from the keyboard.");
+	act(() => {
+		pressEnterInDraft({ metaKey: true });
+	});
+
+	expect(commentTexts()).toHaveLength(1);
+	expect(commentTexts()[0]).toContain("Submit from the keyboard.");
 
 	act(() => {
 		root.unmount();

@@ -109,6 +109,36 @@ const draftReviewCommentLineLabel = (anchor: DraftReviewCommentAnchor) =>
 const draftReviewCommentLocation = (anchor: DraftReviewCommentAnchor) =>
 	`${anchor.path}:${draftReviewCommentLineLabel(anchor)} [${draftReviewCommentSideLabel(anchor)}]`;
 
+const draftReviewCommentFormLinePrefix = (anchor: DraftReviewCommentAnchor) =>
+	anchor.side === "old-deleted" ? "L" : "R";
+
+const draftReviewCommentFormTitle = (anchor: DraftReviewCommentAnchor) => {
+	const linePrefix = draftReviewCommentFormLinePrefix(anchor);
+
+	if (anchor.startLine === anchor.endLine) {
+		return `Add a comment on line ${linePrefix}${anchor.startLine}`;
+	}
+
+	return `Add a comment on lines ${linePrefix}${anchor.startLine} to ${linePrefix}${anchor.endLine}`;
+};
+
+const draftReviewCommentBodyFromForm = (
+	form: HTMLFormElement | null,
+	fallbackTextarea?: HTMLTextAreaElement
+) => {
+	const textarea = form?.elements.namedItem("body") ?? fallbackTextarea;
+
+	if (textarea === null || textarea === undefined || !("value" in textarea)) {
+		return "";
+	}
+
+	return String(textarea.value);
+};
+
+const isDraftReviewCommentSubmitShortcut = (
+	event: Pick<KeyboardEvent, "key" | "metaKey">
+) => event.key === "Enter" && event.metaKey;
+
 const initialFileReviewStateFor = (
 	fileDiff: ParsedFileDiff
 ): FileReviewState => ({
@@ -319,6 +349,29 @@ const FileDraftReviewCommentCount = ({ count }: { readonly count: number }) =>
 		</span>
 	) : null;
 
+interface FileHeaderMetadataProps {
+	readonly commentCount: number;
+	readonly label: string;
+	readonly onViewedChange: (viewed: boolean) => void;
+	readonly viewed: boolean;
+}
+
+const FileHeaderMetadata = ({
+	commentCount,
+	label,
+	onViewedChange,
+	viewed,
+}: FileHeaderMetadataProps) => (
+	<div className="file-header-metadata">
+		<FileDraftReviewCommentCount count={commentCount} />
+		<ViewedFileControl
+			label={label}
+			onViewedChange={onViewedChange}
+			viewed={viewed}
+		/>
+	</div>
+);
+
 const DraftReviewCommentForm = ({
 	anchor,
 	onCancel,
@@ -327,39 +380,54 @@ const DraftReviewCommentForm = ({
 	readonly anchor: DraftReviewCommentAnchor;
 	readonly onCancel: () => void;
 	readonly onSubmit: (body: string) => void;
-}) => (
-	<form
-		className="draft-review-comment-form"
-		onSubmit={(event) => {
-			event.preventDefault();
-			const textarea = event.currentTarget.elements.namedItem("body");
-			onSubmit(
-				textarea !== null && "value" in textarea ? String(textarea.value) : ""
-			);
-		}}
-	>
-		<p className="draft-review-comment-location">
-			{draftReviewCommentLocation(anchor)}
-		</p>
-		<textarea
-			aria-label="Draft review comment"
-			name="body"
-			placeholder="Add a draft review comment..."
-		/>
-		<div className="draft-review-comment-actions">
-			<button aria-label="Submit draft review comment" type="submit">
-				Comment
-			</button>
-			<button
-				aria-label="Cancel draft review comment"
-				onClick={onCancel}
-				type="button"
-			>
-				Cancel
-			</button>
-		</div>
-	</form>
-);
+}) => {
+	const submitDraftReviewCommentForm = (
+		form: HTMLFormElement | null,
+		fallbackTextarea?: HTMLTextAreaElement
+	) => {
+		onSubmit(draftReviewCommentBodyFromForm(form, fallbackTextarea));
+	};
+
+	return (
+		<form
+			className="draft-review-comment-form"
+			onSubmit={(event) => {
+				event.preventDefault();
+				submitDraftReviewCommentForm(event.currentTarget);
+			}}
+		>
+			<h3 className="draft-review-comment-title">
+				{draftReviewCommentFormTitle(anchor)}
+			</h3>
+			<textarea
+				aria-label="Draft review comment"
+				name="body"
+				onKeyDownCapture={(event) => {
+					if (isDraftReviewCommentSubmitShortcut(event)) {
+						event.preventDefault();
+						submitDraftReviewCommentForm(
+							event.currentTarget.form,
+							event.currentTarget
+						);
+					}
+				}}
+				placeholder="Add a draft review comment..."
+			/>
+			<div className="draft-review-comment-actions">
+				<button aria-label="Submit draft review comment" type="submit">
+					Comment
+				</button>
+				<button
+					aria-label="Cancel draft review comment"
+					onClick={onCancel}
+					type="button"
+				>
+					Cancel
+				</button>
+			</div>
+		</form>
+	);
+};
 
 const SubmittedDraftReviewCommentView = ({
 	comment,
@@ -625,16 +693,14 @@ export const ContinuousPatchDiff = ({
 						}}
 						renderAnnotation={renderDraftReviewCommentAnnotation}
 						renderHeaderMetadata={() => (
-							<>
-								<FileDraftReviewCommentCount count={fileCommentCount} />
-								<ViewedFileControl
-									label={label}
-									onViewedChange={(viewed) => {
-										markViewed(key, viewed);
-									}}
-									viewed={fileReviewState.viewed}
-								/>
-							</>
+							<FileHeaderMetadata
+								commentCount={fileCommentCount}
+								label={label}
+								onViewedChange={(viewed) => {
+									markViewed(key, viewed);
+								}}
+								viewed={fileReviewState.viewed}
+							/>
 						)}
 						renderHeaderPrefix={() => (
 							<FileCollapseToggle
@@ -695,9 +761,9 @@ const ReviewSessionView = ({
 }: {
 	readonly session: ReviewSession;
 }) => (
-	<main className="app">
+	<main className="review-app">
 		<ReviewHeader context={session.context} />
-		<section aria-label="Patch">
+		<section aria-label="Patch" className="review-patch">
 			<ContinuousPatchDiff
 				diffFileSnapshots={session.diffFileSnapshots}
 				patch={session.patch}
@@ -737,11 +803,11 @@ export const App = ({ initialSession }: AppProps) => {
 	}, []);
 
 	if (error !== undefined) {
-		return <main className="app">{error}</main>;
+		return <main className="review-app">{error}</main>;
 	}
 
 	if (session === undefined) {
-		return <main className="app">Loading Review Session...</main>;
+		return <main className="review-app">Loading Review Session...</main>;
 	}
 
 	return <ReviewSessionView session={session} />;
