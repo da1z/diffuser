@@ -80,6 +80,22 @@ _Avoid_: Plain text diff
 A file in the **Continuous Diff View** that the reviewer has marked as already inspected during the current browser session.
 _Avoid_: Approval, saved review state, collapsed file
 
+**Draft Review Comment**:
+An unsaved reviewer note anchored to one or more lines in the **Continuous Diff View** during the current browser session.
+_Avoid_: Saved comment, review thread, approval note
+
+**Comment Anchor**:
+The file path, side, and line range that locate a **Draft Review Comment** in the rendered **Patch**.
+_Avoid_: Current-file line only, mixed-side range
+
+**Review Summary**:
+Plain text copied from submitted **Draft Review Comments** for use outside Diffuser.
+_Avoid_: Export file, persisted review, comment thread
+
+**Review Comment Toolbar**:
+A floating control for copying or discarding submitted **Draft Review Comments** during the current browser session.
+_Avoid_: Review status bar, persistent comment panel
+
 **Basic Review UI**:
 A minimal **Local Review UI** that relies on the diff renderer's default presentation.
 _Avoid_: Custom visual system, bespoke performance layer
@@ -97,6 +113,26 @@ _Avoid_: Custom visual system, bespoke performance layer
 - A **Review Session** contains **Review Context** such as the command, arguments, repository, and capture time.
 - **Review Context** includes the **Repository Context** for the captured Git command.
 - A **Review Session** does not contain comments, approvals, notes, or saved review state in v1.
+- A **Draft Review Comment** belongs to the **Local Review UI**, not to the captured **Review Session**.
+- A **Draft Review Comment** has exactly one **Comment Anchor**.
+- A **Comment Anchor** uses the old file path and old-side line numbers for deleted lines.
+- A **Comment Anchor** uses the new file path and new-side line numbers for added lines and unchanged context lines.
+- A **Comment Anchor** does not span both old and new sides.
+- Line selection for a **Draft Review Comment** is constrained to one side of the **Side-by-side Diff**.
+- A **Draft Review Comment** is written through an inline form attached to its **Comment Anchor** in the **Continuous Diff View**.
+- Cancelling an inline **Draft Review Comment** form clears the current line selection.
+- A **Draft Review Comment** exists only after the reviewer submits non-empty text.
+- Multiple submitted **Draft Review Comments** may share the same **Comment Anchor**.
+- A submitted **Draft Review Comment** may be individually discarded but is not edited in place.
+- A **Review Summary** contains repeated location blocks with a **Comment Anchor** followed by the comment text.
+- A **Review Summary** marks old-side anchors as `[old/deleted]` and new-side anchors as `[new]`.
+- A **Review Summary** orders **Draft Review Comments** by their position in the rendered **Patch**.
+- A **Review Comment Toolbar** appears only when at least one submitted **Draft Review Comment** exists.
+- A **Review Comment Toolbar** provides copy and clear actions for all submitted **Draft Review Comments**.
+- A file header shows when submitted **Draft Review Comments** exist for that file.
+- Submitted **Draft Review Comments** are cleared after a **Review Summary** is successfully copied, not after a failed copy attempt.
+- Submitted **Draft Review Comments** may also be manually discarded without copying.
+- Clearing all submitted **Draft Review Comments** asks for confirmation; discarding one comment does not.
 - A **Commit Review** includes commit identity and authorship in its **Review Context**.
 - A **Review Session** is presented through a **Local Review UI** by default.
 - A **Local Review UI** includes a **Review Header**.
@@ -154,3 +190,5 @@ _Avoid_: Custom visual system, bespoke performance layer
 - Diffuser uses Effect for the **Workflow Runtime** from the start; React remains the rendering layer for the **Local Review UI**.
 - v1 defers bundling and publishing decisions until the **Diffuser Command** behavior is proven.
 - v1 tests should cover CLI and session behavior without browser automation.
+- "review comments" means unsaved **Draft Review Comments** for clipboard export, not persisted review threads or collaboration.
+- **Draft Review Comment** behavior should be covered with React unit/probe tests and manual browser verification, not browser automation tests.
