@@ -656,6 +656,45 @@ test("supports side-aware inline Draft Review Comments in the Local Review UI", 
 	});
 });
 
+test("rejects Draft Review Comment ranges that normalize across anchor sides", () => {
+	let currentFileDiff: FileDiffRendererProps | undefined;
+	const CapturingFileDiffProbe = (props: FileDiffRendererProps) => {
+		currentFileDiff = props;
+
+		return <FileDiffProbe {...props} />;
+	};
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={CapturingFileDiffProbe}
+			patch={draftCommentPatch}
+		/>
+	);
+	const selectLines = (range: {
+		readonly start: number;
+		readonly end: number;
+		readonly side: "deletions" | "additions";
+	}) => {
+		act(() => {
+			currentFileDiff?.options?.onLineSelectionEnd?.(range);
+		});
+	};
+
+	selectLines({ start: 2, end: 2, side: "additions" });
+	expect(
+		container.querySelector('textarea[aria-label="Draft review comment"]')
+	).not.toBeNull();
+
+	selectLines({ start: 2, end: 3, side: "deletions" });
+	expect(
+		container.querySelector('textarea[aria-label="Draft review comment"]')
+	).toBeNull();
+	expect(currentFileDiff?.selectedLines).toBeNull();
+
+	act(() => {
+		root.unmount();
+	});
+});
+
 test("default-collapses large rendered file diffs without marking them viewed", () => {
 	const largePatch = patchWithRenderedContextRows(
 		"large.txt",
