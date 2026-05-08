@@ -308,11 +308,9 @@ const FileDraftReviewCommentCount = ({ count }: { readonly count: number }) =>
 	) : undefined;
 
 const DraftReviewCommentForm = ({
-	body,
 	onCancel,
 	onSubmit,
 }: {
-	readonly body: string;
 	readonly onCancel: () => void;
 	readonly onSubmit: (body: string) => void;
 }) => (
@@ -328,7 +326,6 @@ const DraftReviewCommentForm = ({
 	>
 		<textarea
 			aria-label="Draft review comment"
-			defaultValue={body}
 			name="body"
 			placeholder="Add a draft review comment..."
 		/>
@@ -442,15 +439,12 @@ export const ContinuousPatchDiff = ({
 		activeDraftReviewCommentSelection,
 		setActiveDraftReviewCommentSelection,
 	] = useState<SelectedLineRange | null>(null);
-	const [activeDraftReviewCommentBody, setActiveDraftReviewCommentBody] =
-		useState("");
 	const [copyError, setCopyError] = useState<string | undefined>();
 	useEffect(() => {
 		setFileReviewStates(initialFileReviewStates);
 		setDraftReviewCommentState(emptyDraftReviewCommentState());
 		setActiveDraftReviewCommentAnchor(undefined);
 		setActiveDraftReviewCommentSelection(null);
-		setActiveDraftReviewCommentBody("");
 		setCopyError(undefined);
 	}, [initialFileReviewStates]);
 	const submittedComments = draftReviewCommentState.submittedComments;
@@ -481,7 +475,6 @@ export const ContinuousPatchDiff = ({
 	const cancelDraftReviewCommentForm = () => {
 		setActiveDraftReviewCommentAnchor(undefined);
 		setActiveDraftReviewCommentSelection(null);
-		setActiveDraftReviewCommentBody("");
 	};
 	const submitActiveDraftReviewComment = (body: string) => {
 		if (activeDraftReviewCommentAnchor === undefined) {
@@ -529,7 +522,6 @@ export const ContinuousPatchDiff = ({
 		if (metadata.kind === "form") {
 			return (
 				<DraftReviewCommentForm
-					body={activeDraftReviewCommentBody}
 					onCancel={cancelDraftReviewCommentForm}
 					onSubmit={submitActiveDraftReviewComment}
 				/>
@@ -588,7 +580,6 @@ export const ContinuousPatchDiff = ({
 
 								setActiveDraftReviewCommentAnchor(anchor);
 								setActiveDraftReviewCommentSelection(selection);
-								setActiveDraftReviewCommentBody("");
 								setCopyError(undefined);
 							},
 						}}

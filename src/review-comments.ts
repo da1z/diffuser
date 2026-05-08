@@ -130,13 +130,8 @@ const ascendingRange = (
 const rangeNumbers = (start: number, end: number) =>
 	Array.from({ length: end - start + 1 }, (_, index) => start + index);
 
-const addRenderedLinePosition = (
-	positions: Map<number, RenderedLinePosition>,
-	lineNumber: number,
-	position: RenderedLinePosition
-) => {
-	positions.set(lineNumber, position);
-};
+const isDefined = <Value>(value: Value | undefined): value is Value =>
+	value !== undefined;
 
 const renderedLinePositionsForHunk = (
 	hunk: Hunk,
@@ -158,16 +153,8 @@ const renderedLinePositionsForHunk = (
 					kind: "context",
 					position: renderedPosition + offset,
 				} as const;
-				addRenderedLinePosition(
-					positions.additions,
-					position.additionLine,
-					position
-				);
-				addRenderedLinePosition(
-					positions.deletions,
-					position.deletionLine,
-					position
-				);
+				positions.additions.set(position.additionLine, position);
+				positions.deletions.set(position.deletionLine, position);
 			}
 			additionLine += content.lines;
 			deletionLine += content.lines;
@@ -182,11 +169,7 @@ const renderedLinePositionsForHunk = (
 				kind: "deletion",
 				position: renderedPosition + offset,
 			} as const;
-			addRenderedLinePosition(
-				positions.deletions,
-				position.deletionLine,
-				position
-			);
+			positions.deletions.set(position.deletionLine, position);
 		}
 		for (let offset = 0; offset < content.additions; offset += 1) {
 			const position = {
@@ -195,11 +178,7 @@ const renderedLinePositionsForHunk = (
 				kind: "addition",
 				position: renderedPosition + offset,
 			} as const;
-			addRenderedLinePosition(
-				positions.additions,
-				position.additionLine,
-				position
-			);
+			positions.additions.set(position.additionLine, position);
 		}
 		additionLine += content.additions;
 		deletionLine += content.deletions;
@@ -240,6 +219,36 @@ const positionsForSelection = ({
 	);
 };
 
+const definedPositionsForSelection = ({
+	positions,
+	selection,
+	side,
+}: {
+	readonly positions: RenderedLinePositions;
+	readonly selection: SelectedLineRange;
+	readonly side: SelectionSide;
+}) => {
+	const selectedPositions = positionsForSelection({
+		positions,
+		selection,
+		side,
+	});
+
+	if (selectedPositions.length === 0 || !selectedPositions.every(isDefined)) {
+		return;
+	}
+
+	return selectedPositions;
+};
+
+const definedLineNumbers = (lineNumbers: readonly (number | undefined)[]) => {
+	if (!lineNumbers.every(isDefined)) {
+		return;
+	}
+
+	return lineNumbers;
+};
+
 export const draftReviewCommentAnchorForSelection = ({
 	fileDiff,
 	fileKey,
@@ -258,22 +267,18 @@ export const draftReviewCommentAnchorForSelection = ({
 		return;
 	}
 
-	const positions = positionsForSelection({
+	const positions = definedPositionsForSelection({
 		positions: renderedLinePositionsForFileDiff(fileDiff),
 		selection,
 		side,
 	});
 
-	if (
-		positions.length === 0 ||
-		positions.some((position) => position === undefined)
-	) {
+	if (positions === undefined) {
 		return;
 	}
 
-	const definedPositions = positions as readonly RenderedLinePosition[];
 	const position = Math.min(
-		...definedPositions.map((renderedLine) => renderedLine.position)
+		...positions.map((renderedLine) => renderedLine.position)
 	);
 
 	if (side === "additions") {
@@ -290,7 +295,7 @@ export const draftReviewCommentAnchorForSelection = ({
 		};
 	}
 
-	const lineKinds = new Set(definedPositions.map((line) => line.kind));
+	const lineKinds = new Set(positions.map((line) => line.kind));
 	const [startLine, endLine] = ascendingRange(selection.start, selection.end);
 
 	if (lineKinds.size !== 1) {
@@ -309,21 +314,21 @@ export const draftReviewCommentAnchorForSelection = ({
 		};
 	}
 
-	const additionLines = definedPositions.map((line) => line.additionLine);
+	const additionLines = definedLineNumbers(
+		positions.map((line) => line.additionLine)
+	);
 
-	if (additionLines.some((line) => line === undefined)) {
+	if (additionLines === undefined) {
 		return;
 	}
 
-	const normalizedAdditionLines = additionLines as readonly number[];
-
 	return {
-		endLine: Math.max(...normalizedAdditionLines),
+		endLine: Math.max(...additionLines),
 		fileKey,
 		fileOrder,
 		path: fileDiff.name,
 		position,
 		side: "new",
-		startLine: Math.min(...normalizedAdditionLines),
+		startLine: Math.min(...additionLines),
 	};
 };

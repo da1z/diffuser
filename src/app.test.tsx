@@ -173,7 +173,12 @@ const FileDiffProbe = ({
 						<div
 							data-annotation-line={annotation.lineNumber}
 							data-annotation-side={annotation.side}
-							key={`${annotation.side}:${annotation.lineNumber}:${annotation.metadata?.kind ?? "unknown"}`}
+							key={[
+								annotation.side,
+								annotation.lineNumber,
+								annotation.metadata?.kind ?? "unknown",
+								annotation.metadata?.comment?.id ?? "active",
+							].join(":")}
 						>
 							{renderAnnotation?.(annotation)}
 						</div>
@@ -182,6 +187,35 @@ const FileDiffProbe = ({
 			)}
 		</article>
 	);
+};
+
+const submitDraftReviewComment = (container: Element, body: string) => {
+	act(() => {
+		container
+			.querySelector<HTMLButtonElement>(
+				'button[aria-label="Select added line"]'
+			)
+			?.click();
+	});
+
+	const textarea = container.querySelector<HTMLTextAreaElement>(
+		'textarea[aria-label="Draft review comment"]'
+	);
+	if (textarea === null) {
+		throw new Error("Draft review comment textarea was not rendered.");
+	}
+
+	act(() => {
+		textarea.value = body;
+		textarea.dispatchEvent(new window.InputEvent("input", { bubbles: true }));
+	});
+	act(() => {
+		textarea
+			.closest("form")
+			?.dispatchEvent(
+				new window.Event("submit", { bubbles: true, cancelable: true })
+			);
+	});
 };
 
 test("loads the Review Session from the Session Endpoint", async () => {
@@ -537,33 +571,7 @@ test("submits and copies Draft Review Comments from the Local Review UI", async 
 		},
 	});
 
-	act(() => {
-		container
-			.querySelector<HTMLButtonElement>(
-				'button[aria-label="Select added line"]'
-			)
-			?.click();
-	});
-
-	const textarea = container.querySelector<HTMLTextAreaElement>(
-		'textarea[aria-label="Draft review comment"]'
-	);
-	expect(textarea).not.toBeNull();
-	if (textarea === null) {
-		throw new Error("Draft review comment textarea was not rendered.");
-	}
-
-	act(() => {
-		textarea.value = "Please simplify this branch.";
-		textarea.dispatchEvent(new window.InputEvent("input", { bubbles: true }));
-	});
-	act(() => {
-		textarea
-			?.closest("form")
-			?.dispatchEvent(
-				new window.Event("submit", { bubbles: true, cancelable: true })
-			);
-	});
+	submitDraftReviewComment(container, "Please simplify this branch.");
 
 	expect(container.textContent).toContain("Please simplify this branch.");
 	expect(container.textContent).toContain("1 draft comment");
@@ -603,30 +611,7 @@ test("keeps Draft Review Comments when copying fails", async () => {
 		},
 	});
 
-	act(() => {
-		container
-			.querySelector<HTMLButtonElement>(
-				'button[aria-label="Select added line"]'
-			)
-			?.click();
-	});
-	const textarea = container.querySelector<HTMLTextAreaElement>(
-		'textarea[aria-label="Draft review comment"]'
-	);
-	if (textarea === null) {
-		throw new Error("Draft review comment textarea was not rendered.");
-	}
-	act(() => {
-		textarea.value = "Do not lose this.";
-		textarea.dispatchEvent(new window.InputEvent("input", { bubbles: true }));
-	});
-	act(() => {
-		textarea
-			?.closest("form")
-			?.dispatchEvent(
-				new window.Event("submit", { bubbles: true, cancelable: true })
-			);
-	});
+	submitDraftReviewComment(container, "Do not lose this.");
 
 	await act(async () => {
 		container
