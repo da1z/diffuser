@@ -75,6 +75,7 @@ const initialFileReviewState: FileReviewState = {
 	collapsed: false,
 };
 const emptyDiffFileSnapshots: readonly DiffFileSnapshot[] = [];
+const copyReviewErrorMessage = "Could not copy review.";
 
 const fileDiffKey = (fileDiff: ParsedFileDiff, index: number) =>
 	[
@@ -522,21 +523,20 @@ export const ContinuousPatchDiff = ({
 		setCopyError(undefined);
 	};
 	const copyReview = () => {
-		const writeClipboardText = navigator.clipboard?.writeText.bind(
-			navigator.clipboard
-		);
+		const clipboard = navigator.clipboard;
 
-		if (writeClipboardText === undefined) {
-			setCopyError("Could not copy review.");
+		if (clipboard === undefined) {
+			setCopyError(copyReviewErrorMessage);
 			return;
 		}
 
-		writeClipboardText(formatReviewSummary(submittedComments))
+		clipboard
+			.writeText(formatReviewSummary(submittedComments))
 			.then(() => {
 				clearDraftReviewComments();
 			})
 			.catch(() => {
-				setCopyError("Could not copy review.");
+				setCopyError(copyReviewErrorMessage);
 			});
 	};
 	const confirmClearDraftReviewComments = () => {
