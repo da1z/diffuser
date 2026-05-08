@@ -1,12 +1,62 @@
-import { PatchDiff } from "@pierre/diffs/react";
-import { useEffect, useState } from "react";
+import { parsePatchFiles } from "@pierre/diffs";
+import { FileDiff } from "@pierre/diffs/react";
+import { useEffect, useMemo, useState } from "react";
 
+import { reviewSessionEndpoint } from "./diffuser/protocol";
 import type { ReviewSession } from "./diffuser/workflow";
 import "./index.css";
 
 export interface AppProps {
 	readonly initialSession?: ReviewSession;
 }
+
+type FetchReviewSession = (
+	input: Parameters<typeof fetch>[0],
+	init?: Parameters<typeof fetch>[1]
+) => ReturnType<typeof fetch>;
+
+const splitDiffOptions = { diffStyle: "split" } as const;
+
+const fileDiffKey = (
+	fileDiff: ReturnType<typeof parsePatchFiles>[number]["files"][number]
+) =>
+	[
+		fileDiff.prevName,
+		fileDiff.name,
+		fileDiff.type,
+		...fileDiff.hunks.map((hunk) => hunk.hunkSpecs),
+	].join("\0");
+
+export const loadReviewSession = async (
+	fetchSession: FetchReviewSession = fetch
+): Promise<ReviewSession> => {
+	const response = await fetchSession(reviewSessionEndpoint);
+
+	if (!response.ok) {
+		throw new Error("Review Session could not be loaded.");
+	}
+
+	return response.json() as Promise<ReviewSession>;
+};
+
+const ContinuousPatchDiff = ({ patch }: { readonly patch: string }) => {
+	const fileDiffs = useMemo(
+		() => parsePatchFiles(patch).flatMap((parsedPatch) => parsedPatch.files),
+		[patch]
+	);
+
+	return (
+		<>
+			{fileDiffs.map((fileDiff) => (
+				<FileDiff
+					fileDiff={fileDiff}
+					key={fileDiffKey(fileDiff)}
+					options={splitDiffOptions}
+				/>
+			))}
+		</>
+	);
+};
 
 export const App = ({ initialSession }: AppProps) => {
 	const [session, setSession] = useState<ReviewSession | undefined>(
@@ -19,13 +69,7 @@ export const App = ({ initialSession }: AppProps) => {
 			return;
 		}
 
-		fetch("/api/session")
-			.then((response) => {
-				if (!response.ok) {
-					throw new Error("Review Session could not be loaded.");
-				}
-				return response.json() as Promise<ReviewSession>;
-			})
+		loadReviewSession()
 			.then(setSession)
 			.catch((unknownError: unknown) => {
 				setError(
@@ -64,7 +108,7 @@ export const App = ({ initialSession }: AppProps) => {
 				<p>Captured {session.context.capturedAt}</p>
 			</header>
 			<section aria-label="Patch">
-				<PatchDiff options={{ diffStyle: "split" }} patch={session.patch} />
+				<ContinuousPatchDiff patch={session.patch} />
 			</section>
 		</main>
 	);

@@ -80,3 +80,56 @@ test("--no-open prints the URL without opening a browser", async () => {
 	]);
 	expect(openedUrls).toEqual([]);
 });
+
+test("launches diffuser show as a browser Commit Review through the Workflow Runtime", async () => {
+	const openedUrls: string[] = [];
+	const printedLines: string[] = [];
+	const servedSessions: ReviewSession[] = [];
+
+	const launch = await Effect.runPromise(
+		launchReviewSession({
+			argv: ["show", "HEAD"],
+			cwd: "/repo",
+			now: () => new Date("2026-05-08T03:10:00.000Z"),
+			git: {
+				diff: () => Effect.die("diff should not run for diffuser show"),
+				repositoryRoot: () => Effect.succeed("/repo"),
+				showCommit: ({ commitish, pathspec }) => {
+					expect(commitish).toBe("HEAD");
+					expect(pathspec).toEqual([]);
+
+					return Effect.succeed({
+						metadata: {
+							oid: "abc123def456",
+							shortOid: "abc123d",
+							authorName: "Ada Lovelace",
+							authorEmail: "ada@example.com",
+							authoredAt: "2026-05-07T12:00:00+00:00",
+							subject: "Teach diffuser to show commits",
+						},
+						patch: "diff --git a/file.txt b/file.txt\n",
+					});
+				},
+			},
+			serve: (session) => {
+				servedSessions.push(session);
+				return { url: new URL("http://127.0.0.1:49154/") };
+			},
+			openBrowser: (url) => {
+				openedUrls.push(url);
+			},
+			printLine: (line) => {
+				printedLines.push(line);
+			},
+		})
+	);
+
+	expect(launch.session.kind).toBe("show");
+	expect(launch.session.context.command).toBe("diffuser show HEAD");
+	expect(launch.session.context.commit?.shortOid).toBe("abc123d");
+	expect(servedSessions).toEqual([launch.session]);
+	expect(printedLines).toEqual([
+		formatReviewSessionLine("http://127.0.0.1:49154/"),
+	]);
+	expect(openedUrls).toEqual(["http://127.0.0.1:49154/"]);
+});
