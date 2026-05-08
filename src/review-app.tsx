@@ -1,5 +1,6 @@
 import { parsePatchFiles } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
+import type { ComponentType, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 
 import { reviewSessionEndpoint } from "./diffuser/protocol";
@@ -19,8 +20,23 @@ type ParsedFileDiff = ReturnType<
 	typeof parsePatchFiles
 >[number]["files"][number];
 type ReviewSessionContext = ReviewSession["context"];
+interface FileReviewState {
+	readonly collapsed: boolean;
+	readonly viewed: boolean;
+}
+type FileReviewStates = Record<string, FileReviewState | undefined>;
+export interface FileDiffRendererProps {
+	readonly fileDiff: ParsedFileDiff;
+	readonly options?: typeof splitDiffOptions & { readonly collapsed?: boolean };
+	readonly renderHeaderMetadata?: (fileDiff: ParsedFileDiff) => ReactNode;
+	readonly renderHeaderPrefix?: (fileDiff: ParsedFileDiff) => ReactNode;
+}
 
 const splitDiffOptions = { diffStyle: "split" } as const;
+const initialFileReviewState: FileReviewState = {
+	viewed: false,
+	collapsed: false,
+};
 
 const fileDiffKey = (fileDiff: ParsedFileDiff) =>
 	[
@@ -29,6 +45,12 @@ const fileDiffKey = (fileDiff: ParsedFileDiff) =>
 		fileDiff.type,
 		...fileDiff.hunks.map((hunk) => hunk.hunkSpecs),
 	].join("\0");
+
+const fileReviewLabel = (fileDiff: ParsedFileDiff) =>
+	fileDiff.name ?? fileDiff.prevName ?? "file";
+
+const getFileReviewState = (states: FileReviewStates, key: string) =>
+	states[key] ?? initialFileReviewState;
 
 export const loadReviewSession = async (
 	fetchSession: FetchReviewSession = fetch
@@ -42,21 +64,91 @@ export const loadReviewSession = async (
 	return response.json() as Promise<ReviewSession>;
 };
 
-const ContinuousPatchDiff = ({ patch }: { readonly patch: string }) => {
+export const ContinuousPatchDiff = ({
+	patch,
+	DiffRenderer = FileDiff,
+}: {
+	readonly patch: string;
+	readonly DiffRenderer?: ComponentType<FileDiffRendererProps>;
+}) => {
+	const [fileReviewStates, setFileReviewStates] = useState<FileReviewStates>(
+		{}
+	);
 	const fileDiffs = useMemo(
 		() => parsePatchFiles(patch).flatMap((parsedPatch) => parsedPatch.files),
 		[patch]
 	);
+	const markViewed = (key: string, viewed: boolean) => {
+		setFileReviewStates((states) => {
+			const current = getFileReviewState(states, key);
+
+			return {
+				...states,
+				[key]: {
+					viewed,
+					collapsed: viewed ? true : current.collapsed,
+				},
+			};
+		});
+	};
+	const toggleCollapsed = (key: string) => {
+		setFileReviewStates((states) => {
+			const current = getFileReviewState(states, key);
+
+			return {
+				...states,
+				[key]: {
+					...current,
+					collapsed: !current.collapsed,
+				},
+			};
+		});
+	};
 
 	return (
 		<>
-			{fileDiffs.map((fileDiff) => (
-				<FileDiff
-					fileDiff={fileDiff}
-					key={fileDiffKey(fileDiff)}
-					options={splitDiffOptions}
-				/>
-			))}
+			{fileDiffs.map((fileDiff) => {
+				const key = fileDiffKey(fileDiff);
+				const fileReviewState = getFileReviewState(fileReviewStates, key);
+				const label = fileReviewLabel(fileDiff);
+
+				return (
+					<DiffRenderer
+						fileDiff={fileDiff}
+						key={key}
+						options={{
+							...splitDiffOptions,
+							collapsed: fileReviewState.collapsed,
+						}}
+						renderHeaderMetadata={() => (
+							<label className="viewed-file-control">
+								<input
+									aria-label={`Mark ${label} viewed`}
+									checked={fileReviewState.viewed}
+									onChange={(event) => {
+										markViewed(key, event.currentTarget.checked);
+									}}
+									type="checkbox"
+								/>
+								Viewed
+							</label>
+						)}
+						renderHeaderPrefix={() => (
+							<button
+								aria-expanded={!fileReviewState.collapsed}
+								aria-label={`Toggle ${label} collapsed`}
+								className="file-collapse-toggle"
+								onClick={() => {
+									toggleCollapsed(key);
+								}}
+								type="button"
+							>
+								{fileReviewState.collapsed ? "+" : "-"}
+							</button>
+						)}
+					/>
+				);
+			})}
 		</>
 	);
 };
