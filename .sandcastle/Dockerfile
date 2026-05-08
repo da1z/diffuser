@@ -21,17 +21,24 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 RUN usermod -d /home/agent -m -l agent bun
 USER agent
 
+# Install user-scoped Bun packages under the agent home directory.
+ENV HOME="/home/agent" \
+  BUN_INSTALL="/home/agent/.bun" \
+  BUN_INSTALL_BIN="/home/agent/.bun/bin" \
+  PATH="/home/agent/.local/bin:/home/agent/.bun/bin:$PATH"
+
 # Install Cursor CLI
 RUN curl https://cursor.com/install -fsS | bash
+
+# Install Effect Solutions CLI
+RUN bun add -g effect-solutions \
+  && effect-solutions --version
 
 # Docker runs the container as the host UID/GID, so the home directory must be
 # writable even when the host UID is not 1000.
 USER root
 RUN chmod -R a+rwX /home/agent
 USER agent
-
-# Add Cursor Agent to PATH
-ENV PATH="/home/agent/.local/bin:$PATH"
 
 WORKDIR /home/agent
 
