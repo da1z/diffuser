@@ -1,4 +1,4 @@
-import { parsePatchFiles } from "@pierre/diffs";
+import { type FileDiffOptions, parsePatchFiles } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -20,7 +20,10 @@ type ParsedFileDiff = ReturnType<
 >[number]["files"][number];
 type ReviewSessionContext = ReviewSession["context"];
 
-const splitDiffOptions = { diffStyle: "split" } as const;
+export const continuousDiffViewOptions = {
+	diffStyle: "split",
+	hunkSeparators: "line-info-basic",
+} as const satisfies FileDiffOptions<undefined>;
 
 const fileDiffKey = (fileDiff: ParsedFileDiff) =>
 	[
@@ -54,7 +57,7 @@ const ContinuousPatchDiff = ({ patch }: { readonly patch: string }) => {
 				<FileDiff
 					fileDiff={fileDiff}
 					key={fileDiffKey(fileDiff)}
-					options={splitDiffOptions}
+					options={continuousDiffViewOptions}
 				/>
 			))}
 		</>

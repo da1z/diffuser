@@ -1,9 +1,14 @@
 import { expect, test } from "bun:test";
+import { parsePatchFiles } from "@pierre/diffs";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { reviewSessionEndpoint } from "./diffuser/protocol";
 import type { ReviewSession } from "./diffuser/workflow";
-import { App, loadReviewSession } from "./review-app";
+import {
+	App,
+	continuousDiffViewOptions,
+	loadReviewSession,
+} from "./review-app";
 
 const multiFilePatch = `diff --git a/a.txt b/a.txt
 --- a/a.txt
@@ -83,6 +88,20 @@ test("renders a Continuous Diff View for a multi-file Patch", () => {
 
 	expect(html).toContain('aria-label="Patch"');
 	expect(html.match(/<diffs-container/g)).toHaveLength(2);
+});
+
+test("configures Pierre hunk affordances within the Patch-only renderer scope", () => {
+	const session = reviewSession({ patch: multiFilePatch });
+	const parsedPatch = parsePatchFiles(multiFilePatch)[0];
+	const firstFile = parsedPatch?.files[0];
+
+	expect(continuousDiffViewOptions).toEqual({
+		diffStyle: "split",
+		hunkSeparators: "line-info-basic",
+	});
+	expect(firstFile?.isPartial).toBe(true);
+	expect(session).not.toHaveProperty("oldFile");
+	expect(session).not.toHaveProperty("newFile");
 });
 
 test("renders commit metadata for a Commit Review", () => {
