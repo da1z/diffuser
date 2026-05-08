@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { formatReviewSessionLine } from "./protocol";
-import { launchReviewSession } from "./runtime";
+import { launchReviewSession, type ReviewServerLaunchOptions } from "./runtime";
 import type { ReviewSession } from "./workflow";
 
 test("launches a one-shot Review Session and opens the Local Review UI by default", async () => {
@@ -52,6 +52,7 @@ test("launches a one-shot Review Session and opens the Local Review UI by defaul
 test("--no-open prints the URL without opening a browser", async () => {
 	const openedUrls: string[] = [];
 	const printedLines: string[] = [];
+	const servedOptions: unknown[] = [];
 
 	await Effect.runPromise(
 		launchReviewSession({
@@ -71,7 +72,11 @@ test("--no-open prints the URL without opening a browser", async () => {
 				workingTreeFile: () =>
 					Effect.die("workingTreeFile should not run for diffuser diff"),
 			},
-			serve: () => ({ url: new URL("http://127.0.0.1:49153/") }),
+			serve: (_session: ReviewSession, options: ReviewServerLaunchOptions) => {
+				servedOptions.push(options);
+
+				return { url: new URL("http://127.0.0.1:49153/") };
+			},
 			openBrowser: (url) => {
 				openedUrls.push(url);
 			},
@@ -84,7 +89,42 @@ test("--no-open prints the URL without opening a browser", async () => {
 	expect(printedLines).toEqual([
 		formatReviewSessionLine("http://127.0.0.1:49153/"),
 	]);
+	expect(servedOptions).toEqual([{ shutdownOnPageUnload: false }]);
 	expect(openedUrls).toEqual([]);
+});
+
+test("enables browser unload shutdown only for auto-open sessions", async () => {
+	const servedOptions: unknown[] = [];
+
+	await Effect.runPromise(
+		launchReviewSession({
+			argv: ["diff"],
+			cwd: "/repo",
+			now: () => new Date("2026-05-08T02:41:00.000Z"),
+			git: {
+				blob: () => Effect.die("blob should not run for diffuser diff"),
+				diff: () =>
+					Effect.succeed({
+						stdout: "diff --git a/file.txt b/file.txt\n",
+						stderr: "",
+					}),
+				repositoryRoot: () => Effect.succeed("/repo"),
+				showCommit: () =>
+					Effect.die("showCommit should not run for diffuser diff"),
+				workingTreeFile: () =>
+					Effect.die("workingTreeFile should not run for diffuser diff"),
+			},
+			serve: (_session: ReviewSession, options: ReviewServerLaunchOptions) => {
+				servedOptions.push(options);
+
+				return { url: new URL("http://127.0.0.1:49155/") };
+			},
+			openBrowser: () => undefined,
+			printLine: () => undefined,
+		})
+	);
+
+	expect(servedOptions).toEqual([{ shutdownOnPageUnload: true }]);
 });
 
 test("launches diffuser show as a browser Commit Review through the Workflow Runtime", async () => {

@@ -42,6 +42,10 @@ const openBrowser = (url: string) => {
 
 const keepReviewSessionAlive = () => {
 	process.stdin.resume();
+
+	return () => {
+		process.stdin.pause();
+	};
 };
 
 const argv = process.argv.slice(2);
@@ -52,13 +56,21 @@ if (parsed.kind === "help") {
 	process.exit(1);
 }
 
+let releaseReviewSessionKeepAlive: () => void = () => undefined;
 const exit = await Effect.runPromiseExit(
 	launchReviewSession({
 		argv,
 		cwd: process.cwd(),
 		now: () => new Date(),
 		git: bunGitAdapter,
-		serve: (session) => serveReviewSession({ session }),
+		serve: (session, options) =>
+			serveReviewSession({
+				...options,
+				session,
+				onShutdownRequest: () => {
+					releaseReviewSessionKeepAlive();
+				},
+			}),
 		openBrowser,
 		printLine: (line) => console.log(line),
 	})
@@ -78,4 +90,4 @@ if (Exit.isFailure(exit)) {
 	process.exit(1);
 }
 
-keepReviewSessionAlive();
+releaseReviewSessionKeepAlive = keepReviewSessionAlive();

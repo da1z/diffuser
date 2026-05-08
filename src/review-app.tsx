@@ -10,7 +10,10 @@ import {
 } from "@pierre/diffs/react";
 import { type ComponentType, useEffect, useMemo, useState } from "react";
 
-import { reviewSessionEndpoint } from "./diffuser/protocol";
+import {
+	reviewSessionEndpoint,
+	reviewSessionShutdownEndpoint,
+} from "./diffuser/protocol";
 import type { DiffFileSnapshot, ReviewSession } from "./diffuser/workflow";
 import "./index.css";
 
@@ -189,6 +192,19 @@ export const loadReviewSession = async (
 	return response.json() as Promise<ReviewSession>;
 };
 
+const notifyReviewSessionClosed = () => {
+	if (navigator.sendBeacon?.(reviewSessionShutdownEndpoint)) {
+		return;
+	}
+
+	fetch(reviewSessionShutdownEndpoint, {
+		keepalive: true,
+		method: "POST",
+	}).catch(() => {
+		// Page unload signals are best-effort; there is no useful recovery path.
+	});
+};
+
 export const ContinuousPatchDiff = ({
 	diffFileSnapshots = emptyDiffFileSnapshots,
 	patch,
@@ -336,6 +352,14 @@ export const App = ({ initialSession }: AppProps) => {
 				);
 			});
 	}, [session]);
+
+	useEffect(() => {
+		window.addEventListener("pagehide", notifyReviewSessionClosed);
+
+		return () => {
+			window.removeEventListener("pagehide", notifyReviewSessionClosed);
+		};
+	}, []);
 
 	if (error !== undefined) {
 		return <main className="app">{error}</main>;

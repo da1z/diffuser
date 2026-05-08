@@ -4,7 +4,10 @@ import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { reviewSessionEndpoint } from "./diffuser/protocol";
+import {
+	reviewSessionEndpoint,
+	reviewSessionShutdownEndpoint,
+} from "./diffuser/protocol";
 import type { ReviewSession } from "./diffuser/workflow";
 import {
 	App,
@@ -92,6 +95,7 @@ const renderInteractive = (children: ReactNode) => {
 		SVGElement: window.SVGElement,
 		Event: window.Event,
 		MouseEvent: window.MouseEvent,
+		navigator: window.navigator,
 		Node: window.Node,
 		ResizeObserver: window.ResizeObserver,
 	});
@@ -147,6 +151,29 @@ test("loads the Review Session from the Session Endpoint", async () => {
 
 	expect(requests).toEqual([reviewSessionEndpoint]);
 	expect(loaded).toEqual(session);
+});
+
+test("notifies the One-shot Server when the Local Review UI unloads", () => {
+	const shutdownRequests: string[] = [];
+	const { root } = renderInteractive(<App initialSession={reviewSession()} />);
+	Object.defineProperty(window.navigator, "sendBeacon", {
+		configurable: true,
+		value: (url: string) => {
+			shutdownRequests.push(url);
+
+			return true;
+		},
+	});
+
+	act(() => {
+		window.dispatchEvent(new window.Event("pagehide"));
+	});
+
+	expect(shutdownRequests).toEqual([reviewSessionShutdownEndpoint]);
+
+	act(() => {
+		root.unmount();
+	});
 });
 
 test("renders the Review Header for a captured session", () => {

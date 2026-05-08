@@ -15,10 +15,17 @@ export interface ReviewServerHandle {
 	readonly url: URL;
 }
 
+export interface ReviewServerLaunchOptions {
+	readonly shutdownOnPageUnload: boolean;
+}
+
 export interface ReviewRuntimeInput extends DiffWorkflowInput {
 	readonly openBrowser: (url: string) => void;
 	readonly printLine: (line: string) => void;
-	readonly serve: (session: ReviewSession) => ReviewServerHandle;
+	readonly serve: (
+		session: ReviewSession,
+		options: ReviewServerLaunchOptions
+	) => ReviewServerHandle;
 }
 
 export interface LaunchedReviewSession {
@@ -42,7 +49,9 @@ export const launchReviewSession = ({
 	Effect.gen(function* () {
 		const command = parseDiffuserCommand(argv);
 		const session = yield* createReviewSession({ argv, cwd, git, now });
-		const server = serve(session);
+		const server = serve(session, {
+			shutdownOnPageUnload: command.openBrowser,
+		});
 		const url = server.url.toString();
 
 		printLine(formatReviewSessionLine(url));
