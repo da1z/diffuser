@@ -154,13 +154,14 @@ const fileProbeFor = (container: Element, fileName: string, occurrence = 0) =>
 		container.querySelectorAll<HTMLElement>(`[data-file="${fileName}"]`)
 	)[occurrence];
 
-const fileHeaderTextFor = (
+const fileDraftReviewCommentCountTextFor = (
 	container: Element,
 	fileName: string,
 	occurrence = 0
 ) =>
-	fileProbeFor(container, fileName, occurrence)?.querySelector("header")
-		?.textContent;
+	fileProbeFor(container, fileName, occurrence)?.querySelector(
+		".draft-review-comment-file-count"
+	)?.textContent;
 
 interface DraftReviewSelectionRange {
 	readonly end: number;
@@ -852,15 +853,23 @@ test("surfaces per-file Draft Review Comment counts independently from viewed an
 			'button[aria-label="Clear draft review comments"]'
 		);
 
-	expect(fileHeaderTextFor(container, "a.txt")).not.toContain("comment");
-	expect(fileHeaderTextFor(container, "b.txt")).not.toContain("comment");
+	expect(
+		fileDraftReviewCommentCountTextFor(container, "a.txt")
+	).toBeUndefined();
+	expect(
+		fileDraftReviewCommentCountTextFor(container, "b.txt")
+	).toBeUndefined();
 
 	submitDraftReviewComment(container, "First file concern.", {
 		fileName: "a.txt",
 	});
 
-	expect(fileHeaderTextFor(container, "a.txt")).toContain("1 comment");
-	expect(fileHeaderTextFor(container, "b.txt")).not.toContain("comment");
+	expect(fileDraftReviewCommentCountTextFor(container, "a.txt")).toBe(
+		"1 comment"
+	);
+	expect(
+		fileDraftReviewCommentCountTextFor(container, "b.txt")
+	).toBeUndefined();
 	expect(viewedControlPressedState(aViewed())).toBe("false");
 	expect(aFile()?.dataset.collapsed).toBe("false");
 
@@ -868,7 +877,9 @@ test("surfaces per-file Draft Review Comment counts independently from viewed an
 		aViewed()?.click();
 	});
 
-	expect(fileHeaderTextFor(container, "a.txt")).toContain("1 comment");
+	expect(fileDraftReviewCommentCountTextFor(container, "a.txt")).toBe(
+		"1 comment"
+	);
 	expect(viewedControlPressedState(aViewed())).toBe("true");
 	expect(aFile()?.dataset.collapsed).toBe("true");
 
@@ -876,8 +887,12 @@ test("surfaces per-file Draft Review Comment counts independently from viewed an
 		fileName: "b.txt",
 	});
 
-	expect(fileHeaderTextFor(container, "a.txt")).toContain("1 comment");
-	expect(fileHeaderTextFor(container, "b.txt")).toContain("1 comment");
+	expect(fileDraftReviewCommentCountTextFor(container, "a.txt")).toBe(
+		"1 comment"
+	);
+	expect(fileDraftReviewCommentCountTextFor(container, "b.txt")).toBe(
+		"1 comment"
+	);
 	expect(container.textContent).toContain("2 draft comments");
 	expect(viewedControlPressedState(bViewed())).toBe("false");
 	expect(bFile()?.dataset.collapsed).toBe("false");
@@ -886,7 +901,9 @@ test("surfaces per-file Draft Review Comment counts independently from viewed an
 		bCollapseToggle()?.click();
 	});
 
-	expect(fileHeaderTextFor(container, "b.txt")).toContain("1 comment");
+	expect(fileDraftReviewCommentCountTextFor(container, "b.txt")).toBe(
+		"1 comment"
+	);
 	expect(viewedControlPressedState(bViewed())).toBe("false");
 	expect(bFile()?.dataset.collapsed).toBe("true");
 
@@ -894,8 +911,12 @@ test("surfaces per-file Draft Review Comment counts independently from viewed an
 		clearDraftReviewComments()?.click();
 	});
 
-	expect(fileHeaderTextFor(container, "a.txt")).not.toContain("comment");
-	expect(fileHeaderTextFor(container, "b.txt")).not.toContain("comment");
+	expect(
+		fileDraftReviewCommentCountTextFor(container, "a.txt")
+	).toBeUndefined();
+	expect(
+		fileDraftReviewCommentCountTextFor(container, "b.txt")
+	).toBeUndefined();
 	expect(viewedControlPressedState(aViewed())).toBe("true");
 	expect(aFile()?.dataset.collapsed).toBe("true");
 	expect(viewedControlPressedState(bViewed())).toBe("false");

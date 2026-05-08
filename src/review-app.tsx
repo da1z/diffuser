@@ -317,7 +317,7 @@ const FileDraftReviewCommentCount = ({ count }: { readonly count: number }) =>
 		<span className="draft-review-comment-file-count">
 			{count} {count === 1 ? "comment" : "comments"}
 		</span>
-	) : undefined;
+	) : null;
 
 const DraftReviewCommentForm = ({
 	anchor,
