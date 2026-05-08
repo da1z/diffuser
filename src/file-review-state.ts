@@ -11,11 +11,6 @@ export type FileReviewStates = Record<string, FileReviewState | undefined>;
 
 export const LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD = 200;
 
-const initialFileReviewState: FileReviewState = {
-	viewed: false,
-	collapsed: false,
-};
-
 export const fileDiffKey = (fileDiff: ParsedFileDiff, index: number) =>
 	[
 		index,
@@ -31,7 +26,7 @@ const renderedSplitHunkRowCount = (fileDiff: ParsedFileDiff) =>
 export const shouldDefaultCollapseFileDiff = (fileDiff: ParsedFileDiff) =>
 	renderedSplitHunkRowCount(fileDiff) > LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD;
 
-const initialFileReviewStateFor = (
+const defaultFileReviewStateFor = (
 	fileDiff: ParsedFileDiff
 ): FileReviewState => ({
 	viewed: false,
@@ -44,7 +39,7 @@ export const initialFileReviewStatesFor = (
 	Object.fromEntries(
 		fileDiffs.map((fileDiff, index) => [
 			fileDiffKey(fileDiff, index),
-			initialFileReviewStateFor(fileDiff),
+			defaultFileReviewStateFor(fileDiff),
 		])
 	) satisfies FileReviewStates;
 
@@ -52,7 +47,8 @@ export const getFileReviewState = (
 	states: FileReviewStates,
 	fileDiff: ParsedFileDiff,
 	index: number
-) => states[fileDiffKey(fileDiff, index)] ?? initialFileReviewState;
+) =>
+	states[fileDiffKey(fileDiff, index)] ?? defaultFileReviewStateFor(fileDiff);
 
 const updateFileReviewState = (
 	states: FileReviewStates,

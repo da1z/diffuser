@@ -26,24 +26,25 @@ ${lines}
 const fileDiffsFor = (patch: string) =>
 	parsePatchFiles(patch).flatMap((parsedPatch) => parsedPatch.files);
 
-test("applies Viewed File and collapse policy transitions", () => {
-	const [largeFileDiff] = fileDiffsFor(
-		patchWithRenderedContextRows(
-			"large.txt",
-			LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD + 1
-		)
-	);
-	const [thresholdFileDiff] = fileDiffsFor(
-		patchWithRenderedContextRows(
-			"threshold.txt",
-			LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD
-		)
-	);
+const fileDiffWithRenderedContextRows = (fileName: string, rows: number) => {
+	const [fileDiff] = fileDiffsFor(patchWithRenderedContextRows(fileName, rows));
 
-	if (largeFileDiff === undefined || thresholdFileDiff === undefined) {
-		throw new Error("Expected file diffs for policy test.");
+	if (fileDiff === undefined) {
+		throw new Error(`Expected a file diff for ${fileName}.`);
 	}
 
+	return fileDiff;
+};
+
+test("default-collapses file diffs above the rendered row threshold", () => {
+	const largeFileDiff = fileDiffWithRenderedContextRows(
+		"large.txt",
+		LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD + 1
+	);
+	const thresholdFileDiff = fileDiffWithRenderedContextRows(
+		"threshold.txt",
+		LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD
+	);
 	const initialStates = initialFileReviewStatesFor([
 		largeFileDiff,
 		thresholdFileDiff,
@@ -57,40 +58,61 @@ test("applies Viewed File and collapse policy transitions", () => {
 		viewed: false,
 		collapsed: false,
 	});
+});
 
-	const viewedStates = markFileViewed(
-		initialStates,
-		thresholdFileDiff,
-		1,
-		true
+test("uses the default collapse policy when file review state is missing", () => {
+	const largeFileDiff = fileDiffWithRenderedContextRows(
+		"large.txt",
+		LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD + 1
 	);
 
-	expect(getFileReviewState(viewedStates, thresholdFileDiff, 1)).toEqual({
+	expect(getFileReviewState({}, largeFileDiff, 0)).toEqual({
+		viewed: false,
+		collapsed: true,
+	});
+});
+
+test("marks viewed files collapsed without changing later collapse toggles", () => {
+	const fileDiff = fileDiffWithRenderedContextRows(
+		"threshold.txt",
+		LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD
+	);
+	const initialStates = initialFileReviewStatesFor([fileDiff]);
+	const viewedStates = markFileViewed(initialStates, fileDiff, 0, true);
+
+	expect(getFileReviewState(viewedStates, fileDiff, 0)).toEqual({
 		viewed: true,
 		collapsed: true,
 	});
 
-	const expandedViewedStates = toggleFileCollapsed(
-		viewedStates,
-		thresholdFileDiff,
-		1
-	);
+	const expandedViewedStates = toggleFileCollapsed(viewedStates, fileDiff, 0);
 
-	expect(
-		getFileReviewState(expandedViewedStates, thresholdFileDiff, 1)
-	).toEqual({
+	expect(getFileReviewState(expandedViewedStates, fileDiff, 0)).toEqual({
 		viewed: true,
 		collapsed: false,
 	});
+});
 
+test("unmarking viewed files preserves current collapse state", () => {
+	const fileDiff = fileDiffWithRenderedContextRows(
+		"threshold.txt",
+		LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD
+	);
+	const viewedStates = markFileViewed(
+		initialFileReviewStatesFor([fileDiff]),
+		fileDiff,
+		0,
+		true
+	);
+	const expandedViewedStates = toggleFileCollapsed(viewedStates, fileDiff, 0);
 	const unviewedStates = markFileViewed(
 		expandedViewedStates,
-		thresholdFileDiff,
-		1,
+		fileDiff,
+		0,
 		false
 	);
 
-	expect(getFileReviewState(unviewedStates, thresholdFileDiff, 1)).toEqual({
+	expect(getFileReviewState(unviewedStates, fileDiff, 0)).toEqual({
 		viewed: false,
 		collapsed: false,
 	});
