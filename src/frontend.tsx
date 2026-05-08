@@ -20,6 +20,8 @@ const app = (
 );
 
 if (import.meta.hot) {
+	await import("react-grab");
+
 	// With hot module reloading, `import.meta.hot.data` is persisted.
 	// biome-ignore lint/suspicious/noAssignInExpressions: need it here
 	const root = (import.meta.hot.data.root ??= createRoot(elem));
