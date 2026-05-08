@@ -57,19 +57,24 @@ const fileReviewLabel = (fileDiff: ParsedFileDiff) =>
 const getFileReviewState = (states: FileReviewStates, key: string) =>
 	states[key] ?? initialFileReviewState;
 
-const renderedHunkRowCount = (fileDiff: ParsedFileDiff) =>
+const renderedSplitHunkRowCount = (fileDiff: ParsedFileDiff) =>
 	fileDiff.hunks.reduce((rowCount, hunk) => rowCount + hunk.splitLineCount, 0);
+
+const shouldDefaultCollapseFileDiff = (fileDiff: ParsedFileDiff) =>
+	renderedSplitHunkRowCount(fileDiff) > LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD;
+
+const initialFileReviewStateFor = (
+	fileDiff: ParsedFileDiff
+): FileReviewState => ({
+	viewed: false,
+	collapsed: shouldDefaultCollapseFileDiff(fileDiff),
+});
 
 const initialFileReviewStatesFor = (fileDiffs: readonly ParsedFileDiff[]) =>
 	Object.fromEntries(
 		fileDiffs.map((fileDiff, index) => [
 			fileDiffKey(fileDiff, index),
-			{
-				viewed: false,
-				collapsed:
-					renderedHunkRowCount(fileDiff) >
-					LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD,
-			},
+			initialFileReviewStateFor(fileDiff),
 		])
 	) satisfies FileReviewStates;
 

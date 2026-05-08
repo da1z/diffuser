@@ -43,7 +43,7 @@ diff --git a/a.txt b/a.txt
 +new
 `;
 
-const patchWithRenderedRows = (fileName: string, rows: number) => {
+const patchWithRenderedContextRows = (fileName: string, rows: number) => {
 	const lines = Array.from(
 		{ length: rows },
 		(_, index) => ` unchanged ${fileName} ${index + 1}`
@@ -287,11 +287,15 @@ test("keeps repeated file entries independent in the Local Review UI", () => {
 });
 
 test("default-collapses large rendered file diffs without marking them viewed", () => {
-	const largePatch = patchWithRenderedRows(
+	const largePatch = patchWithRenderedContextRows(
 		"large.txt",
 		LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD + 1
 	);
-	const smallPatch = patchWithRenderedRows(
+	const thresholdPatch = patchWithRenderedContextRows(
+		"threshold.txt",
+		LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD
+	);
+	const smallPatch = patchWithRenderedContextRows(
 		"small.txt",
 		LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD - 1
 	);
@@ -320,6 +324,26 @@ test("default-collapses large rendered file diffs without marking them viewed", 
 	expect(largeFile()?.dataset.collapsed).toBe("false");
 	expect(largeViewed()?.checked).toBe(false);
 	expect(container.textContent).toContain("large.txt body");
+
+	act(() => {
+		root.render(
+			<ContinuousPatchDiff
+				DiffRenderer={FileDiffProbe}
+				patch={thresholdPatch}
+			/>
+		);
+	});
+
+	const thresholdFile = () =>
+		container.querySelector<HTMLElement>('[data-file="threshold.txt"]');
+	const thresholdViewed = () =>
+		container.querySelector<HTMLInputElement>(
+			'input[aria-label="Mark threshold.txt viewed"]'
+		);
+
+	expect(thresholdFile()?.dataset.collapsed).toBe("false");
+	expect(thresholdViewed()?.checked).toBe(false);
+	expect(container.textContent).toContain("threshold.txt body");
 
 	act(() => {
 		root.render(
