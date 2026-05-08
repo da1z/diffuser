@@ -54,10 +54,5 @@ body {
 }
 
 .viewed-file-control {
-	display: inline-flex;
-	gap: 6px;
-	align-items: center;
-	font-size: 13px;
 	font-weight: 600;
-	color: #334155;
 }

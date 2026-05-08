@@ -159,22 +159,74 @@ interface ViewedFileControlProps {
 	readonly viewed: boolean;
 }
 
+const viewedFileControlClassName = (viewed: boolean) =>
+	[
+		"viewed-file-control",
+		"flex cursor-pointer items-center gap-1.5 rounded-md border py-1 pr-2 pl-1 text-xs transition",
+		viewed
+			? "border-blue-400/50 bg-blue-500/25 text-blue-200"
+			: "border-white/20 bg-transparent text-white/70 hover:border-white/35 hover:bg-white/5 hover:text-white/85",
+	].join(" ");
+
+const ViewedFileControlIcon = ({ viewed }: { readonly viewed: boolean }) =>
+	viewed ? (
+		<svg
+			aria-hidden="true"
+			className="text-blue-400"
+			fill="none"
+			height="16"
+			viewBox="0 0 16 16"
+			width="16"
+			xmlns="http://www.w3.org/2000/svg"
+		>
+			<rect fill="currentColor" height="12" rx="3" width="12" x="2" y="2" />
+			<path
+				d="m5.5 8 1.6 1.6 3.4-3.4"
+				stroke="white"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+				strokeWidth="1.5"
+			/>
+		</svg>
+	) : (
+		<svg
+			aria-hidden="true"
+			className="text-white/50"
+			fill="none"
+			height="16"
+			viewBox="0 0 16 16"
+			width="16"
+			xmlns="http://www.w3.org/2000/svg"
+		>
+			<rect
+				height="10"
+				rx="3"
+				stroke="currentColor"
+				strokeWidth="1.5"
+				width="10"
+				x="3"
+				y="3"
+			/>
+		</svg>
+	);
+
 const ViewedFileControl = ({
 	label,
 	onViewedChange,
 	viewed,
 }: ViewedFileControlProps) => (
-	<label className="viewed-file-control">
-		<input
-			aria-label={`Mark ${label} viewed`}
-			checked={viewed}
-			onChange={(event) => {
-				onViewedChange(event.currentTarget.checked);
-			}}
-			type="checkbox"
-		/>
+	<button
+		aria-label={`Mark ${label} viewed`}
+		aria-pressed={viewed}
+		className={viewedFileControlClassName(viewed)}
+		onClick={() => {
+			onViewedChange(!viewed);
+		}}
+		type="button"
+	>
+		<ViewedFileControlIcon viewed={viewed} />
 		Viewed
-	</label>
+	</button>
 );
 
 export const loadReviewSession = async (

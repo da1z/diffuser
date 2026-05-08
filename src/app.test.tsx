@@ -358,12 +358,12 @@ test("keeps viewed and collapsed file state independent in the Local Review UI",
 	const file = () =>
 		container.querySelector<HTMLElement>('[data-file="a.txt"]');
 	const viewed = () =>
-		container.querySelector<HTMLInputElement>(
-			'input[aria-label="Mark a.txt viewed"]'
+		container.querySelector<HTMLButtonElement>(
+			'button[aria-label="Mark a.txt viewed"]'
 		);
 	const secondViewed = () =>
-		container.querySelector<HTMLInputElement>(
-			'input[aria-label="Mark b.txt viewed"]'
+		container.querySelector<HTMLButtonElement>(
+			'button[aria-label="Mark b.txt viewed"]'
 		);
 	const collapseToggle = () =>
 		container.querySelector<HTMLButtonElement>(
@@ -376,8 +376,9 @@ test("keeps viewed and collapsed file state independent in the Local Review UI",
 
 	expect(
 		container.querySelectorAll('input[type="checkbox"][aria-label$="viewed"]')
-	).toHaveLength(2);
-	expect(viewed()?.checked).toBe(false);
+	).toHaveLength(0);
+	expect(viewed()?.textContent).toContain("Viewed");
+	expect(viewed()?.getAttribute("aria-pressed")).toBe("false");
 	expect(file()?.dataset.collapsed).toBe("false");
 	expect(container.textContent).toContain("a.txt body");
 
@@ -385,7 +386,7 @@ test("keeps viewed and collapsed file state independent in the Local Review UI",
 		viewed()?.click();
 	});
 
-	expect(viewed()?.checked).toBe(true);
+	expect(viewed()?.getAttribute("aria-pressed")).toBe("true");
 	expect(file()?.dataset.collapsed).toBe("true");
 	expect(container.textContent).not.toContain("a.txt body");
 
@@ -393,7 +394,7 @@ test("keeps viewed and collapsed file state independent in the Local Review UI",
 		collapseToggle()?.click();
 	});
 
-	expect(viewed()?.checked).toBe(true);
+	expect(viewed()?.getAttribute("aria-pressed")).toBe("true");
 	expect(file()?.dataset.collapsed).toBe("false");
 	expect(container.textContent).toContain("a.txt body");
 
@@ -404,14 +405,14 @@ test("keeps viewed and collapsed file state independent in the Local Review UI",
 		viewed()?.click();
 	});
 
-	expect(viewed()?.checked).toBe(false);
+	expect(viewed()?.getAttribute("aria-pressed")).toBe("false");
 	expect(file()?.dataset.collapsed).toBe("true");
 
 	act(() => {
 		secondCollapseToggle()?.click();
 	});
 
-	expect(secondViewed()?.checked).toBe(false);
+	expect(secondViewed()?.getAttribute("aria-pressed")).toBe("false");
 	expect(
 		container.querySelector<HTMLElement>('[data-file="b.txt"]')?.dataset
 			.collapsed
@@ -433,8 +434,8 @@ test("keeps repeated file entries independent in the Local Review UI", () => {
 		Array.from(container.querySelectorAll<HTMLElement>('[data-file="a.txt"]'));
 	const viewedControls = () =>
 		Array.from(
-			container.querySelectorAll<HTMLInputElement>(
-				'input[aria-label="Mark a.txt viewed"]'
+			container.querySelectorAll<HTMLButtonElement>(
+				'button[aria-label="Mark a.txt viewed"]'
 			)
 		);
 
@@ -447,10 +448,9 @@ test("keeps repeated file entries independent in the Local Review UI", () => {
 		viewedControls()[0]?.click();
 	});
 
-	expect(viewedControls().map((control) => control.checked)).toEqual([
-		true,
-		false,
-	]);
+	expect(
+		viewedControls().map((control) => control.getAttribute("aria-pressed"))
+	).toEqual(["true", "false"]);
 	expect(files().map((file) => file.dataset.collapsed)).toEqual([
 		"true",
 		"false",
@@ -480,8 +480,8 @@ test("default-collapses large rendered file diffs without marking them viewed", 
 	const largeFile = () =>
 		container.querySelector<HTMLElement>('[data-file="large.txt"]');
 	const largeViewed = () =>
-		container.querySelector<HTMLInputElement>(
-			'input[aria-label="Mark large.txt viewed"]'
+		container.querySelector<HTMLButtonElement>(
+			'button[aria-label="Mark large.txt viewed"]'
 		);
 	const largeCollapseToggle = () =>
 		container.querySelector<HTMLButtonElement>(
@@ -489,7 +489,7 @@ test("default-collapses large rendered file diffs without marking them viewed", 
 		);
 
 	expect(largeFile()?.dataset.collapsed).toBe("true");
-	expect(largeViewed()?.checked).toBe(false);
+	expect(largeViewed()?.getAttribute("aria-pressed")).toBe("false");
 	expect(container.textContent).not.toContain("large.txt body");
 
 	act(() => {
@@ -497,7 +497,7 @@ test("default-collapses large rendered file diffs without marking them viewed", 
 	});
 
 	expect(largeFile()?.dataset.collapsed).toBe("false");
-	expect(largeViewed()?.checked).toBe(false);
+	expect(largeViewed()?.getAttribute("aria-pressed")).toBe("false");
 	expect(container.textContent).toContain("large.txt body");
 
 	act(() => {
@@ -512,12 +512,12 @@ test("default-collapses large rendered file diffs without marking them viewed", 
 	const thresholdFile = () =>
 		container.querySelector<HTMLElement>('[data-file="threshold.txt"]');
 	const thresholdViewed = () =>
-		container.querySelector<HTMLInputElement>(
-			'input[aria-label="Mark threshold.txt viewed"]'
+		container.querySelector<HTMLButtonElement>(
+			'button[aria-label="Mark threshold.txt viewed"]'
 		);
 
 	expect(thresholdFile()?.dataset.collapsed).toBe("false");
-	expect(thresholdViewed()?.checked).toBe(false);
+	expect(thresholdViewed()?.getAttribute("aria-pressed")).toBe("false");
 	expect(container.textContent).toContain("threshold.txt body");
 
 	act(() => {
@@ -529,12 +529,12 @@ test("default-collapses large rendered file diffs without marking them viewed", 
 	const smallFile = () =>
 		container.querySelector<HTMLElement>('[data-file="small.txt"]');
 	const smallViewed = () =>
-		container.querySelector<HTMLInputElement>(
-			'input[aria-label="Mark small.txt viewed"]'
+		container.querySelector<HTMLButtonElement>(
+			'button[aria-label="Mark small.txt viewed"]'
 		);
 
 	expect(smallFile()?.dataset.collapsed).toBe("false");
-	expect(smallViewed()?.checked).toBe(false);
+	expect(smallViewed()?.getAttribute("aria-pressed")).toBe("false");
 	expect(container.textContent).toContain("small.txt body");
 
 	act(() => {
