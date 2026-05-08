@@ -159,13 +159,26 @@ interface ViewedFileControlProps {
 	readonly viewed: boolean;
 }
 
+const viewedFileControlBaseClassName =
+	"viewed-file-control flex cursor-pointer items-center gap-1.5 rounded-md border py-1 pr-2 pl-1 text-xs transition";
+const viewedFileControlViewedClassName =
+	"border-blue-400/50 bg-blue-500/25 text-blue-200";
+const viewedFileControlUnviewedClassName =
+	"border-white/20 bg-transparent text-white/70 hover:border-white/35 hover:bg-white/5 hover:text-white/85";
+const viewedFileControlIconProps = {
+	fill: "none",
+	height: "16",
+	viewBox: "0 0 16 16",
+	width: "16",
+	xmlns: "http://www.w3.org/2000/svg",
+} as const;
+
 const viewedFileControlClassName = (viewed: boolean) =>
 	[
-		"viewed-file-control",
-		"flex cursor-pointer items-center gap-1.5 rounded-md border py-1 pr-2 pl-1 text-xs transition",
+		viewedFileControlBaseClassName,
 		viewed
-			? "border-blue-400/50 bg-blue-500/25 text-blue-200"
-			: "border-white/20 bg-transparent text-white/70 hover:border-white/35 hover:bg-white/5 hover:text-white/85",
+			? viewedFileControlViewedClassName
+			: viewedFileControlUnviewedClassName,
 	].join(" ");
 
 const ViewedFileControlIcon = ({ viewed }: { readonly viewed: boolean }) =>
@@ -173,11 +186,7 @@ const ViewedFileControlIcon = ({ viewed }: { readonly viewed: boolean }) =>
 		<svg
 			aria-hidden="true"
 			className="text-blue-400"
-			fill="none"
-			height="16"
-			viewBox="0 0 16 16"
-			width="16"
-			xmlns="http://www.w3.org/2000/svg"
+			{...viewedFileControlIconProps}
 		>
 			<rect fill="currentColor" height="12" rx="3" width="12" x="2" y="2" />
 			<path
@@ -192,11 +201,7 @@ const ViewedFileControlIcon = ({ viewed }: { readonly viewed: boolean }) =>
 		<svg
 			aria-hidden="true"
 			className="text-white/50"
-			fill="none"
-			height="16"
-			viewBox="0 0 16 16"
-			width="16"
-			xmlns="http://www.w3.org/2000/svg"
+			{...viewedFileControlIconProps}
 		>
 			<rect
 				height="10"
