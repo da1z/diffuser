@@ -15,11 +15,14 @@ type FetchReviewSession = (
 	init?: Parameters<typeof fetch>[1]
 ) => ReturnType<typeof fetch>;
 
+type ParsedFileDiff = ReturnType<
+	typeof parsePatchFiles
+>[number]["files"][number];
+type ReviewSessionContext = ReviewSession["context"];
+
 const splitDiffOptions = { diffStyle: "split" } as const;
 
-const fileDiffKey = (
-	fileDiff: ReturnType<typeof parsePatchFiles>[number]["files"][number]
-) =>
+const fileDiffKey = (fileDiff: ParsedFileDiff) =>
 	[
 		fileDiff.prevName,
 		fileDiff.name,
@@ -58,6 +61,44 @@ const ContinuousPatchDiff = ({ patch }: { readonly patch: string }) => {
 	);
 };
 
+const ReviewHeader = ({
+	context,
+}: {
+	readonly context: ReviewSessionContext;
+}) => {
+	const commit = context.commit;
+
+	return (
+		<header className="review-header">
+			<p className="eyebrow">Diffuser Review</p>
+			<h1>{context.command}</h1>
+			<p>
+				{context.repository.workingDirectory} in {context.repository.root}
+			</p>
+			{commit === undefined ? undefined : (
+				<p>
+					{commit.shortOid} by {commit.authorName} &lt;{commit.authorEmail}&gt;{" "}
+					on {commit.authoredAt}: {commit.subject}
+				</p>
+			)}
+			<p>Captured {context.capturedAt}</p>
+		</header>
+	);
+};
+
+const ReviewSessionView = ({
+	session,
+}: {
+	readonly session: ReviewSession;
+}) => (
+	<main className="app">
+		<ReviewHeader context={session.context} />
+		<section aria-label="Patch">
+			<ContinuousPatchDiff patch={session.patch} />
+		</section>
+	</main>
+);
+
 export const App = ({ initialSession }: AppProps) => {
 	const [session, setSession] = useState<ReviewSession | undefined>(
 		initialSession
@@ -88,30 +129,7 @@ export const App = ({ initialSession }: AppProps) => {
 		return <main className="app">Loading Review Session...</main>;
 	}
 
-	const commit = session.context.commit;
-
-	return (
-		<main className="app">
-			<header className="review-header">
-				<p className="eyebrow">Diffuser Review</p>
-				<h1>{session.context.command}</h1>
-				<p>
-					{session.context.repository.workingDirectory} in{" "}
-					{session.context.repository.root}
-				</p>
-				{commit === undefined ? undefined : (
-					<p>
-						{commit.shortOid} by {commit.authorName} &lt;{commit.authorEmail}
-						&gt; on {commit.authoredAt}: {commit.subject}
-					</p>
-				)}
-				<p>Captured {session.context.capturedAt}</p>
-			</header>
-			<section aria-label="Patch">
-				<ContinuousPatchDiff patch={session.patch} />
-			</section>
-		</main>
-	);
+	return <ReviewSessionView session={session} />;
 };
 
 export default App;
