@@ -9,16 +9,15 @@ export interface CommitMetadataPayload {
 	readonly subject: string;
 }
 
+interface DiffFilePayload {
+	readonly contents: string;
+	readonly name: string;
+}
+
 export type DiffFileSnapshotPayload =
 	| {
-			readonly newFile: {
-				readonly contents: string;
-				readonly name: string;
-			};
-			readonly oldFile: {
-				readonly contents: string;
-				readonly name: string;
-			};
+			readonly newFile: DiffFilePayload;
+			readonly oldFile: DiffFilePayload;
 			readonly status: "available";
 	  }
 	| {
@@ -26,17 +25,21 @@ export type DiffFileSnapshotPayload =
 			readonly status: "unavailable";
 	  };
 
+interface RepositoryContextPayload {
+	readonly root: string;
+	readonly workingDirectory: string;
+}
+
+interface SessionEndpointContextPayload {
+	readonly args: readonly string[];
+	readonly capturedAt: string;
+	readonly command: string;
+	readonly commit?: CommitMetadataPayload;
+	readonly repository: RepositoryContextPayload;
+}
+
 export interface SessionEndpointPayload {
-	readonly context: {
-		readonly args: readonly string[];
-		readonly capturedAt: string;
-		readonly command: string;
-		readonly commit?: CommitMetadataPayload;
-		readonly repository: {
-			readonly root: string;
-			readonly workingDirectory: string;
-		};
-	};
+	readonly context: SessionEndpointContextPayload;
 	readonly diffFileSnapshots: readonly DiffFileSnapshotPayload[];
 	readonly id: string;
 	readonly kind: "diff" | "show";
@@ -52,6 +55,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const isStringArray = (value: unknown): value is readonly string[] =>
 	Array.isArray(value) && value.every((item) => typeof item === "string");
+
+const isSessionKind = (
+	value: unknown
+): value is SessionEndpointPayload["kind"] =>
+	value === "diff" || value === "show";
 
 const isCommitMetadataPayload = (
 	value: unknown
@@ -70,9 +78,7 @@ const isCommitMetadataPayload = (
 	);
 };
 
-const isDiffFilePayload = (
-	value: unknown
-): value is { readonly contents: string; readonly name: string } =>
+const isDiffFilePayload = (value: unknown): value is DiffFilePayload =>
 	isRecord(value) &&
 	typeof value.name === "string" &&
 	typeof value.contents === "string";
@@ -95,6 +101,23 @@ const isDiffFileSnapshotPayload = (
 	);
 };
 
+const isRepositoryContextPayload = (
+	value: unknown
+): value is RepositoryContextPayload =>
+	isRecord(value) &&
+	typeof value.root === "string" &&
+	typeof value.workingDirectory === "string";
+
+const isSessionEndpointContextPayload = (
+	value: unknown
+): value is SessionEndpointContextPayload =>
+	isRecord(value) &&
+	typeof value.command === "string" &&
+	isStringArray(value.args) &&
+	typeof value.capturedAt === "string" &&
+	(value.commit === undefined || isCommitMetadataPayload(value.commit)) &&
+	isRepositoryContextPayload(value.repository);
+
 const isSessionEndpointPayload = (
 	value: unknown
 ): value is SessionEndpointPayload => {
@@ -102,29 +125,14 @@ const isSessionEndpointPayload = (
 		return false;
 	}
 
-	const context = value.context;
-	if (!isRecord(context)) {
-		return false;
-	}
-
-	const repository = context.repository;
-	if (!isRecord(repository)) {
-		return false;
-	}
-
 	return (
 		typeof value.id === "string" &&
 		value.mode === "read-only" &&
-		(value.kind === "diff" || value.kind === "show") &&
+		isSessionKind(value.kind) &&
 		typeof value.patch === "string" &&
 		Array.isArray(value.diffFileSnapshots) &&
 		value.diffFileSnapshots.every(isDiffFileSnapshotPayload) &&
-		typeof context.command === "string" &&
-		isStringArray(context.args) &&
-		typeof context.capturedAt === "string" &&
-		(context.commit === undefined || isCommitMetadataPayload(context.commit)) &&
-		typeof repository.root === "string" &&
-		typeof repository.workingDirectory === "string"
+		isSessionEndpointContextPayload(value.context)
 	);
 };
 
