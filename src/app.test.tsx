@@ -148,6 +148,13 @@ const viewedControlsFor = (container: Element, label: string) =>
 const viewedControlPressedState = (control: HTMLButtonElement | null) =>
 	control?.getAttribute("aria-pressed");
 
+interface DraftReviewSelectionRange {
+	readonly end: number;
+	readonly endSide?: "deletions" | "additions";
+	readonly side: "deletions" | "additions";
+	readonly start: number;
+}
+
 const FileDiffProbe = ({
 	fileDiff,
 	lineAnnotations,
@@ -185,6 +192,82 @@ const FileDiffProbe = ({
 			))}
 		</article>
 	);
+};
+
+const renderDraftReviewCommentProbe = () => {
+	let currentFileDiff: FileDiffRendererProps | undefined;
+	const CapturingFileDiffProbe = (props: FileDiffRendererProps) => {
+		currentFileDiff = props;
+
+		return <FileDiffProbe {...props} />;
+	};
+	const rendered = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={CapturingFileDiffProbe}
+			patch={draftCommentPatch}
+		/>
+	);
+	const draftTextarea = () =>
+		rendered.container.querySelector<HTMLTextAreaElement>(
+			'textarea[aria-label="Draft review comment"]'
+		);
+	const selectLines = (range: DraftReviewSelectionRange) => {
+		act(() => {
+			currentFileDiff?.options?.onLineSelectionEnd?.(range);
+		});
+	};
+	const submitDraft = (comment: string) => {
+		const textarea = draftTextarea();
+		const submit = rendered.container.querySelector<HTMLButtonElement>(
+			'button[aria-label="Submit draft review comment"]'
+		);
+
+		if (textarea === null || submit === null) {
+			throw new Error("Expected an open Draft Review Comment form.");
+		}
+
+		textarea.value = comment;
+		act(() => {
+			submit.click();
+		});
+	};
+	const cancelDraft = () => {
+		act(() => {
+			rendered.container
+				.querySelector<HTMLButtonElement>(
+					'button[aria-label="Cancel draft review comment"]'
+				)
+				?.click();
+		});
+	};
+	const discardDraft = (comment: string) => {
+		const discardButton = Array.from(
+			rendered.container.querySelectorAll<HTMLButtonElement>(
+				'button[aria-label="Discard draft review comment"]'
+			)
+		).find((button) =>
+			button.closest("[data-draft-comment]")?.textContent?.includes(comment)
+		);
+
+		act(() => {
+			discardButton?.click();
+		});
+	};
+	const commentTexts = () =>
+		Array.from(rendered.container.querySelectorAll("[data-draft-comment]")).map(
+			(comment) => comment.textContent ?? ""
+		);
+
+	return {
+		...rendered,
+		cancelDraft,
+		commentTexts,
+		currentFileDiff: () => currentFileDiff,
+		discardDraft,
+		draftTextarea,
+		selectLines,
+		submitDraft,
+	};
 };
 
 test("loads the Review Session from the Session Endpoint", async () => {
@@ -525,81 +608,25 @@ test("keeps repeated file entries independent in the Local Review UI", () => {
 });
 
 test("supports side-aware inline Draft Review Comments in the Local Review UI", () => {
-	let currentFileDiff: FileDiffRendererProps | undefined;
-	const CapturingFileDiffProbe = (props: FileDiffRendererProps) => {
-		currentFileDiff = props;
+	const {
+		cancelDraft,
+		commentTexts,
+		container,
+		currentFileDiff,
+		discardDraft,
+		draftTextarea,
+		root,
+		selectLines,
+		submitDraft,
+	} = renderDraftReviewCommentProbe();
 
-		return <FileDiffProbe {...props} />;
-	};
-	const { container, root } = renderInteractive(
-		<ContinuousPatchDiff
-			DiffRenderer={CapturingFileDiffProbe}
-			patch={draftCommentPatch}
-		/>
-	);
-	const selectLines = (range: {
-		readonly start: number;
-		readonly end: number;
-		readonly side: "deletions" | "additions";
-		readonly endSide?: "deletions" | "additions";
-	}) => {
-		act(() => {
-			currentFileDiff?.options?.onLineSelectionEnd?.(range);
-		});
-	};
-	const submitDraft = (comment: string) => {
-		const textarea = container.querySelector<HTMLTextAreaElement>(
-			'textarea[aria-label="Draft review comment"]'
-		);
-		const submit = container.querySelector<HTMLButtonElement>(
-			'button[aria-label="Submit draft review comment"]'
-		);
-
-		if (textarea === null || submit === null) {
-			throw new Error("Expected an open Draft Review Comment form.");
-		}
-
-		textarea.value = comment;
-		act(() => {
-			submit.click();
-		});
-	};
-	const cancelDraft = () => {
-		act(() => {
-			container
-				.querySelector<HTMLButtonElement>(
-					'button[aria-label="Cancel draft review comment"]'
-				)
-				?.click();
-		});
-	};
-	const discardDraft = (comment: string) => {
-		const discardButton = Array.from(
-			container.querySelectorAll<HTMLButtonElement>(
-				'button[aria-label="Discard draft review comment"]'
-			)
-		).find((button) =>
-			button.closest("[data-draft-comment]")?.textContent?.includes(comment)
-		);
-
-		act(() => {
-			discardButton?.click();
-		});
-	};
-	const commentTexts = () =>
-		Array.from(container.querySelectorAll("[data-draft-comment]")).map(
-			(comment) => comment.textContent ?? ""
-		);
-
-	expect(currentFileDiff?.options?.enableLineSelection).toBe(true);
+	expect(currentFileDiff()?.options?.enableLineSelection).toBe(true);
 
 	selectLines({ start: 2, end: 2, side: "additions" });
-	expect(
-		container.querySelector('textarea[aria-label="Draft review comment"]')
-	).not.toBeNull();
+	expect(draftTextarea()).not.toBeNull();
 	cancelDraft();
 	expect(container.querySelector("[data-draft-comment]")).toBeNull();
-	expect(currentFileDiff?.selectedLines).toBeNull();
+	expect(currentFileDiff()?.selectedLines).toBeNull();
 
 	selectLines({ start: 2, end: 2, side: "additions" });
 	submitDraft("   ");
@@ -657,38 +684,15 @@ test("supports side-aware inline Draft Review Comments in the Local Review UI", 
 });
 
 test("rejects Draft Review Comment ranges that normalize across anchor sides", () => {
-	let currentFileDiff: FileDiffRendererProps | undefined;
-	const CapturingFileDiffProbe = (props: FileDiffRendererProps) => {
-		currentFileDiff = props;
-
-		return <FileDiffProbe {...props} />;
-	};
-	const { container, root } = renderInteractive(
-		<ContinuousPatchDiff
-			DiffRenderer={CapturingFileDiffProbe}
-			patch={draftCommentPatch}
-		/>
-	);
-	const selectLines = (range: {
-		readonly start: number;
-		readonly end: number;
-		readonly side: "deletions" | "additions";
-	}) => {
-		act(() => {
-			currentFileDiff?.options?.onLineSelectionEnd?.(range);
-		});
-	};
+	const { currentFileDiff, draftTextarea, root, selectLines } =
+		renderDraftReviewCommentProbe();
 
 	selectLines({ start: 2, end: 2, side: "additions" });
-	expect(
-		container.querySelector('textarea[aria-label="Draft review comment"]')
-	).not.toBeNull();
+	expect(draftTextarea()).not.toBeNull();
 
 	selectLines({ start: 2, end: 3, side: "deletions" });
-	expect(
-		container.querySelector('textarea[aria-label="Draft review comment"]')
-	).toBeNull();
-	expect(currentFileDiff?.selectedLines).toBeNull();
+	expect(draftTextarea()).toBeNull();
+	expect(currentFileDiff()?.selectedLines).toBeNull();
 
 	act(() => {
 		root.unmount();

@@ -39,6 +39,10 @@ type FetchReviewSession = (
 type ParsedFileDiff = FileDiffMetadata;
 type ReviewSessionContext = ReviewSession["context"];
 type DraftReviewAnchorSide = "new" | "old/deleted";
+interface DraftReviewAnchorLine {
+	readonly lineNumber: number;
+	readonly side: DraftReviewAnchorSide;
+}
 interface DraftReviewAnchor {
 	readonly endLine: number;
 	readonly path: string;
@@ -137,7 +141,61 @@ const draftReviewLocation = (anchor: DraftReviewAnchor) => {
 	return `${anchor.path}:${linePart} [${anchor.side}]`;
 };
 
-const lineAnchorFor = ({
+const lineIndexInRange = ({
+	count,
+	lineIndex,
+	start,
+}: {
+	readonly count: number;
+	readonly lineIndex: number;
+	readonly start: number;
+}) => lineIndex >= start && lineIndex < start + count;
+
+const draftReviewAnchorLineForDeletion = ({
+	fileDiff,
+	lineNumber,
+}: {
+	readonly fileDiff: ParsedFileDiff;
+	readonly lineNumber: number;
+}): DraftReviewAnchorLine | undefined => {
+	const lineIndex = lineNumber - 1;
+	for (const hunk of fileDiff.hunks) {
+		for (const content of hunk.hunkContent) {
+			if (content.type === "context") {
+				if (
+					lineIndexInRange({
+						count: content.lines,
+						lineIndex,
+						start: content.deletionLineIndex,
+					})
+				) {
+					return {
+						lineNumber:
+							content.additionLineIndex +
+							(lineIndex - content.deletionLineIndex) +
+							1,
+						side: "new",
+					};
+				}
+				continue;
+			}
+
+			if (
+				lineIndexInRange({
+					count: content.deletions,
+					lineIndex,
+					start: content.deletionLineIndex,
+				})
+			) {
+				return { lineNumber, side: "old/deleted" };
+			}
+		}
+	}
+
+	return;
+};
+
+const draftReviewAnchorLineFor = ({
 	fileDiff,
 	lineNumber,
 	side,
@@ -145,38 +203,12 @@ const lineAnchorFor = ({
 	readonly fileDiff: ParsedFileDiff;
 	readonly lineNumber: number;
 	readonly side: AnnotationSide;
-}):
-	| { readonly lineNumber: number; readonly side: DraftReviewAnchorSide }
-	| undefined => {
+}): DraftReviewAnchorLine | undefined => {
 	if (side === "additions") {
 		return { lineNumber, side: "new" };
 	}
 
-	const lineIndex = lineNumber - 1;
-	for (const hunk of fileDiff.hunks) {
-		for (const content of hunk.hunkContent) {
-			if (content.type === "context") {
-				const deletionStart = content.deletionLineIndex;
-				const deletionEnd = deletionStart + content.lines - 1;
-				if (lineIndex >= deletionStart && lineIndex <= deletionEnd) {
-					return {
-						lineNumber:
-							content.additionLineIndex + (lineIndex - deletionStart) + 1,
-						side: "new",
-					};
-				}
-				continue;
-			}
-
-			const deletionStart = content.deletionLineIndex;
-			const deletionEnd = deletionStart + content.deletions - 1;
-			if (lineIndex >= deletionStart && lineIndex <= deletionEnd) {
-				return { lineNumber, side: "old/deleted" };
-			}
-		}
-	}
-
-	return;
+	return draftReviewAnchorLineForDeletion({ fileDiff, lineNumber });
 };
 
 const selectedLineBounds = (range: SelectedLineRange) => ({
@@ -221,7 +253,9 @@ const draftReviewAnchorForSelection = ({
 
 	const lines = selectedLineNumbers(range);
 	const anchors = lines
-		.map((lineNumber) => lineAnchorFor({ fileDiff, lineNumber, side }))
+		.map((lineNumber) =>
+			draftReviewAnchorLineFor({ fileDiff, lineNumber, side })
+		)
 		.filter(
 			(anchor): anchor is NonNullable<typeof anchor> => anchor !== undefined
 		);
