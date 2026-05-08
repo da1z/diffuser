@@ -45,19 +45,17 @@ interface DraftReviewAnchor {
 	readonly side: DraftReviewAnchorSide;
 	readonly startLine: number;
 }
-interface OpenDraftReviewComment {
+interface DraftReviewCommentBase {
 	readonly anchor: DraftReviewAnchor;
 	readonly annotationLine: number;
 	readonly annotationSide: AnnotationSide;
 	readonly fileKey: string;
+}
+interface OpenDraftReviewComment extends DraftReviewCommentBase {
 	readonly selectedLines: SelectedLineRange;
 }
-interface SubmittedDraftReviewComment {
-	readonly anchor: DraftReviewAnchor;
-	readonly annotationLine: number;
-	readonly annotationSide: AnnotationSide;
+interface SubmittedDraftReviewComment extends DraftReviewCommentBase {
 	readonly body: string;
-	readonly fileKey: string;
 	readonly id: number;
 }
 type DraftReviewAnnotationMetadata =
@@ -116,6 +114,10 @@ const draftReviewAnchorPath = (
 	side === "old/deleted"
 		? (fileDiff.prevName ?? fileDiff.name ?? "file")
 		: (fileDiff.name ?? fileDiff.prevName ?? "file");
+
+const draftReviewAnnotationSideFor = (
+	side: DraftReviewAnchorSide
+): AnnotationSide => (side === "old/deleted" ? "deletions" : "additions");
 
 const getFileReviewState = (states: FileReviewStates, key: string) =>
 	states[key] ?? initialFileReviewState;
@@ -177,6 +179,33 @@ const lineAnchorFor = ({
 	return;
 };
 
+const selectedLineBounds = (range: SelectedLineRange) => ({
+	end: Math.max(range.start, range.end),
+	start: Math.min(range.start, range.end),
+});
+
+const selectedLineNumbers = (range: SelectedLineRange) => {
+	const { end, start } = selectedLineBounds(range);
+
+	return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+};
+
+const normalizedSelectedLines = (
+	range: SelectedLineRange
+): SelectedLineRange => {
+	const { end, start } = selectedLineBounds(range);
+
+	if (range.side === undefined) {
+		return { end, start };
+	}
+
+	return {
+		end,
+		side: range.side,
+		start,
+	};
+};
+
 const draftReviewAnchorForSelection = ({
 	fileDiff,
 	range,
@@ -190,12 +219,7 @@ const draftReviewAnchorForSelection = ({
 		return;
 	}
 
-	const selectedStart = Math.min(range.start, range.end);
-	const selectedEnd = Math.max(range.start, range.end);
-	const lines = Array.from(
-		{ length: selectedEnd - selectedStart + 1 },
-		(_, index) => selectedStart + index
-	);
+	const lines = selectedLineNumbers(range);
 	const anchors = lines
 		.map((lineNumber) => lineAnchorFor({ fileDiff, lineNumber, side }))
 		.filter(
@@ -241,6 +265,29 @@ const openDraftReviewAnnotationFor = (
 	},
 	side: comment.annotationSide,
 });
+
+const draftReviewAnnotationsForFile = ({
+	fileKey,
+	openDraftReviewComment,
+	submittedDraftReviewComments,
+}: {
+	readonly fileKey: string;
+	readonly openDraftReviewComment: OpenDraftReviewComment | undefined;
+	readonly submittedDraftReviewComments: readonly SubmittedDraftReviewComment[];
+}) => {
+	const submittedAnnotations = submittedDraftReviewComments
+		.filter((comment) => comment.fileKey === fileKey)
+		.map(draftReviewAnnotationFor);
+
+	if (openDraftReviewComment?.fileKey !== fileKey) {
+		return submittedAnnotations;
+	}
+
+	return [
+		...submittedAnnotations,
+		openDraftReviewAnnotationFor(openDraftReviewComment),
+	];
+};
 
 const initialFileReviewStateFor = (
 	fileDiff: ParsedFileDiff
@@ -568,25 +615,12 @@ export const ContinuousPatchDiff = ({
 			return;
 		}
 
-		const annotationSide: AnnotationSide =
-			anchor.side === "old/deleted" ? "deletions" : "additions";
-		const selectedLines =
-			range.side === undefined
-				? {
-						end: Math.max(range.start, range.end),
-						start: Math.min(range.start, range.end),
-					}
-				: {
-						end: Math.max(range.start, range.end),
-						side: range.side,
-						start: Math.min(range.start, range.end),
-					};
 		setOpenDraftReviewComment({
 			anchor,
 			annotationLine: anchor.endLine,
-			annotationSide,
+			annotationSide: draftReviewAnnotationSideFor(anchor.side),
 			fileKey: key,
-			selectedLines,
+			selectedLines: normalizedSelectedLines(range),
 		});
 	};
 	const submitDraftReviewComment = (
@@ -624,16 +658,11 @@ export const ContinuousPatchDiff = ({
 				const key = fileDiffKey(fileDiff, index);
 				const fileReviewState = getFileReviewState(fileReviewStates, key);
 				const label = fileReviewLabel(fileDiff);
-				const submittedAnnotations = submittedDraftReviewComments
-					.filter((comment) => comment.fileKey === key)
-					.map(draftReviewAnnotationFor);
-				const lineAnnotations =
-					openDraftReviewComment?.fileKey === key
-						? [
-								...submittedAnnotations,
-								openDraftReviewAnnotationFor(openDraftReviewComment),
-							]
-						: submittedAnnotations;
+				const lineAnnotations = draftReviewAnnotationsForFile({
+					fileKey: key,
+					openDraftReviewComment,
+					submittedDraftReviewComments,
+				});
 
 				return (
 					<DiffRenderer
