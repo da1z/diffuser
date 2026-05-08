@@ -192,7 +192,7 @@ export const loadReviewSession = async (
 	return response.json() as Promise<ReviewSession>;
 };
 
-const notifyReviewSessionClosed = () => {
+const notifyReviewSessionPageHidden = () => {
 	if (navigator.sendBeacon?.(reviewSessionShutdownEndpoint)) {
 		return;
 	}
@@ -354,10 +354,10 @@ export const App = ({ initialSession }: AppProps) => {
 	}, [session]);
 
 	useEffect(() => {
-		window.addEventListener("pagehide", notifyReviewSessionClosed);
+		window.addEventListener("pagehide", notifyReviewSessionPageHidden);
 
 		return () => {
-			window.removeEventListener("pagehide", notifyReviewSessionClosed);
+			window.removeEventListener("pagehide", notifyReviewSessionPageHidden);
 		};
 	}, []);
 

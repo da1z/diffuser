@@ -20,6 +20,33 @@ const readOnlyResponse = () =>
 
 const defaultShutdownDelayMs = 500;
 
+const createPendingShutdown = ({
+	delayMs,
+	shutdown,
+}: {
+	readonly delayMs: number;
+	readonly shutdown: () => void;
+}) => {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const cancel = () => {
+		if (timer === undefined) {
+			return;
+		}
+
+		clearTimeout(timer);
+		timer = undefined;
+	};
+	const schedule = () => {
+		cancel();
+		timer = setTimeout(() => {
+			timer = undefined;
+			shutdown();
+		}, delayMs);
+	};
+
+	return { cancel, schedule };
+};
+
 export const serveReviewSession = ({
 	onShutdownRequest,
 	session,
@@ -27,23 +54,13 @@ export const serveReviewSession = ({
 	shutdownOnPageUnload = false,
 }: ReviewServerOptions): Server<undefined> => {
 	let server: Server<undefined>;
-	let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
-	const cancelPendingShutdown = () => {
-		if (shutdownTimer === undefined) {
-			return;
-		}
-
-		clearTimeout(shutdownTimer);
-		shutdownTimer = undefined;
-	};
-	const scheduleShutdown = () => {
-		cancelPendingShutdown();
-		shutdownTimer = setTimeout(() => {
-			shutdownTimer = undefined;
+	const pendingShutdown = createPendingShutdown({
+		delayMs: shutdownDelayMs,
+		shutdown: () => {
 			onShutdownRequest?.();
 			server.stop(true);
-		}, shutdownDelayMs);
-	};
+		},
+	});
 
 	server = serve({
 		hostname: reviewSessionHost,
@@ -55,14 +72,14 @@ export const serveReviewSession = ({
 						return new Response("Not Found", { status: 404 });
 					}
 
-					scheduleShutdown();
+					pendingShutdown.schedule();
 
 					return new Response(null, { status: 204 });
 				},
 			},
 			[reviewSessionEndpoint]: {
 				GET: () => {
-					cancelPendingShutdown();
+					pendingShutdown.cancel();
 
 					return Response.json(session);
 				},

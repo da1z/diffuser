@@ -3,7 +3,20 @@ import { Effect } from "effect";
 
 import { formatReviewSessionLine } from "./protocol";
 import { launchReviewSession, type ReviewServerLaunchOptions } from "./runtime";
-import type { ReviewSession } from "./workflow";
+import type { GitAdapter, ReviewSession } from "./workflow";
+
+const diffGitAdapter = {
+	blob: () => Effect.die("blob should not run for diffuser diff"),
+	diff: () =>
+		Effect.succeed({
+			stdout: "diff --git a/file.txt b/file.txt\n",
+			stderr: "",
+		}),
+	repositoryRoot: () => Effect.succeed("/repo"),
+	showCommit: () => Effect.die("showCommit should not run for diffuser diff"),
+	workingTreeFile: () =>
+		Effect.die("workingTreeFile should not run for diffuser diff"),
+} satisfies GitAdapter;
 
 test("launches a one-shot Review Session and opens the Local Review UI by default", async () => {
 	const openedUrls: string[] = [];
@@ -15,19 +28,7 @@ test("launches a one-shot Review Session and opens the Local Review UI by defaul
 			argv: ["diff", "--staged"],
 			cwd: "/repo",
 			now: () => new Date("2026-05-08T02:41:00.000Z"),
-			git: {
-				blob: () => Effect.die("blob should not run for diffuser diff"),
-				diff: () =>
-					Effect.succeed({
-						stdout: "diff --git a/file.txt b/file.txt\n",
-						stderr: "",
-					}),
-				repositoryRoot: () => Effect.succeed("/repo"),
-				showCommit: () =>
-					Effect.die("showCommit should not run for diffuser diff"),
-				workingTreeFile: () =>
-					Effect.die("workingTreeFile should not run for diffuser diff"),
-			},
+			git: diffGitAdapter,
 			serve: (session) => {
 				servedSessions.push(session);
 				return { url: new URL("http://127.0.0.1:49152/") };
@@ -59,19 +60,7 @@ test("--no-open prints the URL without opening a browser", async () => {
 			argv: ["--no-open", "diff"],
 			cwd: "/repo",
 			now: () => new Date("2026-05-08T02:41:00.000Z"),
-			git: {
-				blob: () => Effect.die("blob should not run for diffuser diff"),
-				diff: () =>
-					Effect.succeed({
-						stdout: "diff --git a/file.txt b/file.txt\n",
-						stderr: "",
-					}),
-				repositoryRoot: () => Effect.succeed("/repo"),
-				showCommit: () =>
-					Effect.die("showCommit should not run for diffuser diff"),
-				workingTreeFile: () =>
-					Effect.die("workingTreeFile should not run for diffuser diff"),
-			},
+			git: diffGitAdapter,
 			serve: (_session: ReviewSession, options: ReviewServerLaunchOptions) => {
 				servedOptions.push(options);
 
@@ -101,19 +90,7 @@ test("enables browser unload shutdown only for auto-open sessions", async () => 
 			argv: ["diff"],
 			cwd: "/repo",
 			now: () => new Date("2026-05-08T02:41:00.000Z"),
-			git: {
-				blob: () => Effect.die("blob should not run for diffuser diff"),
-				diff: () =>
-					Effect.succeed({
-						stdout: "diff --git a/file.txt b/file.txt\n",
-						stderr: "",
-					}),
-				repositoryRoot: () => Effect.succeed("/repo"),
-				showCommit: () =>
-					Effect.die("showCommit should not run for diffuser diff"),
-				workingTreeFile: () =>
-					Effect.die("workingTreeFile should not run for diffuser diff"),
-			},
+			git: diffGitAdapter,
 			serve: (_session: ReviewSession, options: ReviewServerLaunchOptions) => {
 				servedOptions.push(options);
 
