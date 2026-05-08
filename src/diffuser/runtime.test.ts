@@ -16,6 +16,7 @@ test("launches a one-shot Review Session and opens the Local Review UI by defaul
 			cwd: "/repo",
 			now: () => new Date("2026-05-08T02:41:00.000Z"),
 			git: {
+				blob: () => Effect.die("blob should not run for diffuser diff"),
 				diff: () =>
 					Effect.succeed({
 						stdout: "diff --git a/file.txt b/file.txt\n",
@@ -24,6 +25,8 @@ test("launches a one-shot Review Session and opens the Local Review UI by defaul
 				repositoryRoot: () => Effect.succeed("/repo"),
 				showCommit: () =>
 					Effect.die("showCommit should not run for diffuser diff"),
+				workingTreeFile: () =>
+					Effect.die("workingTreeFile should not run for diffuser diff"),
 			},
 			serve: (session) => {
 				servedSessions.push(session);
@@ -56,6 +59,7 @@ test("--no-open prints the URL without opening a browser", async () => {
 			cwd: "/repo",
 			now: () => new Date("2026-05-08T02:41:00.000Z"),
 			git: {
+				blob: () => Effect.die("blob should not run for diffuser diff"),
 				diff: () =>
 					Effect.succeed({
 						stdout: "diff --git a/file.txt b/file.txt\n",
@@ -64,6 +68,8 @@ test("--no-open prints the URL without opening a browser", async () => {
 				repositoryRoot: () => Effect.succeed("/repo"),
 				showCommit: () =>
 					Effect.die("showCommit should not run for diffuser diff"),
+				workingTreeFile: () =>
+					Effect.die("workingTreeFile should not run for diffuser diff"),
 			},
 			serve: () => ({ url: new URL("http://127.0.0.1:49153/") }),
 			openBrowser: (url) => {
@@ -92,6 +98,7 @@ test("launches diffuser show as a browser Commit Review through the Workflow Run
 			cwd: "/repo",
 			now: () => new Date("2026-05-08T03:10:00.000Z"),
 			git: {
+				blob: () => Effect.die("blob should not run for diffuser show"),
 				diff: () => Effect.die("diff should not run for diffuser show"),
 				repositoryRoot: () => Effect.succeed("/repo"),
 				showCommit: ({ commitish, pathspec }) => {
@@ -110,6 +117,8 @@ test("launches diffuser show as a browser Commit Review through the Workflow Run
 						patch: "diff --git a/file.txt b/file.txt\n",
 					});
 				},
+				workingTreeFile: () =>
+					Effect.die("workingTreeFile should not run for diffuser show"),
 			},
 			serve: (session) => {
 				servedSessions.push(session);

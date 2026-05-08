@@ -51,6 +51,8 @@ describe("diff Review Sessions", () => {
 						});
 					},
 					showCommit: () => Effect.die("should not run"),
+					blob: () => Effect.die("blob should not run"),
+					workingTreeFile: () => Effect.die("workingTreeFile should not run"),
 					repositoryRoot: ({ cwd }) => {
 						calls.push({ command: "root", args: [], cwd });
 						return Effect.succeed("/repo");
@@ -69,6 +71,12 @@ describe("diff Review Sessions", () => {
 			kind: "diff",
 			patch:
 				"diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new\n",
+			diffFileSnapshots: [
+				{
+					status: "unavailable",
+					reason: "Previous file content is unavailable",
+				},
+			],
 			context: {
 				command: "diffuser diff --staged",
 				args: ["--staged"],
@@ -91,6 +99,8 @@ describe("diff Review Sessions", () => {
 					git: {
 						diff: () => Effect.succeed({ stdout: "", stderr: "" }),
 						showCommit: () => Effect.die("should not run"),
+						blob: () => Effect.die("blob should not run"),
+						workingTreeFile: () => Effect.die("workingTreeFile should not run"),
 						repositoryRoot: () => Effect.die("should not run"),
 					},
 				})
@@ -101,6 +111,107 @@ describe("diff Review Sessions", () => {
 		if (Either.isLeft(result)) {
 			expect(result.left).toBeInstanceOf(EmptyPatchError);
 		}
+	});
+
+	test("captures ordered Diff File Snapshots while preserving the Patch", async () => {
+		const patch =
+			"diff --git a/file.txt b/file.txt\nindex 1111111..2222222 100644\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new\n";
+		const calls: Array<{
+			command: "blob" | "diff" | "root";
+			args?: readonly string[];
+			cwd: string;
+			objectId?: string;
+		}> = [];
+
+		const session = await Effect.runPromise(
+			createDiffReviewSession({
+				argv: ["diff"],
+				cwd: "/repo",
+				now: () => new Date("2026-05-08T02:41:00.000Z"),
+				git: {
+					diff: ({ args, cwd }) => {
+						calls.push({ command: "diff", args, cwd });
+						return Effect.succeed({ stdout: patch, stderr: "" });
+					},
+					showCommit: () => Effect.die("should not run"),
+					blob: ({ cwd, objectId }) => {
+						calls.push({ command: "blob", cwd, objectId });
+						return Effect.succeed({
+							stdout: objectId === "1111111" ? "old\n" : "new\n",
+							stderr: "",
+						});
+					},
+					workingTreeFile: () => Effect.die("workingTreeFile should not run"),
+					repositoryRoot: ({ cwd }) => {
+						calls.push({ command: "root", cwd });
+						return Effect.succeed("/repo");
+					},
+				},
+			})
+		);
+
+		expect(calls).toEqual([
+			{ command: "diff", args: [], cwd: "/repo" },
+			{ command: "root", cwd: "/repo" },
+			{ command: "blob", cwd: "/repo", objectId: "1111111" },
+			{ command: "blob", cwd: "/repo", objectId: "2222222" },
+		]);
+		expect(session.patch).toBe(patch);
+		expect(session.diffFileSnapshots).toEqual([
+			{
+				status: "available",
+				oldFile: { name: "file.txt", contents: "old\n" },
+				newFile: { name: "file.txt", contents: "new\n" },
+			},
+		]);
+	});
+
+	test("falls back to the working tree for plain diff new-side snapshots", async () => {
+		const patch =
+			"diff --git a/file.txt b/file.txt\nindex 1111111..2222222 100644\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new\n";
+		const calls: Array<{
+			command: "blob" | "file";
+			cwd: string;
+			objectId?: string;
+			path?: string;
+		}> = [];
+
+		const session = await Effect.runPromise(
+			createDiffReviewSession({
+				argv: ["diff"],
+				cwd: "/repo/packages/app",
+				now: () => new Date("2026-05-08T02:41:00.000Z"),
+				git: {
+					diff: () => Effect.succeed({ stdout: patch, stderr: "" }),
+					showCommit: () => Effect.die("should not run"),
+					blob: ({ cwd, objectId }) => {
+						calls.push({ command: "blob", cwd, objectId });
+
+						return objectId === "1111111"
+							? Effect.succeed({ stdout: "old\n", stderr: "" })
+							: Effect.fail(new GitError({ message: "blob missing" }));
+					},
+					workingTreeFile: ({ cwd, path }) => {
+						calls.push({ command: "file", cwd, path });
+						return Effect.succeed({ stdout: "new\n", stderr: "" });
+					},
+					repositoryRoot: () => Effect.succeed("/repo"),
+				},
+			})
+		);
+
+		expect(calls).toEqual([
+			{ command: "blob", cwd: "/repo/packages/app", objectId: "1111111" },
+			{ command: "blob", cwd: "/repo/packages/app", objectId: "2222222" },
+			{ command: "file", cwd: "/repo", path: "file.txt" },
+		]);
+		expect(session.diffFileSnapshots).toEqual([
+			{
+				status: "available",
+				oldFile: { name: "file.txt", contents: "old\n" },
+				newFile: { name: "file.txt", contents: "new\n" },
+			},
+		]);
 	});
 });
 
@@ -119,6 +230,7 @@ describe("show Commit Reviews", () => {
 				cwd: "/repo/packages/app",
 				now: () => new Date("2026-05-08T03:10:00.000Z"),
 				git: {
+					blob: () => Effect.die("blob should not run"),
 					diff: () => Effect.die("should not run"),
 					showCommit: ({ commitish, pathspec, cwd }) => {
 						calls.push({ command: "show", commitish, pathspec, cwd });
@@ -139,6 +251,7 @@ describe("show Commit Reviews", () => {
 						calls.push({ command: "root", cwd });
 						return Effect.succeed("/repo");
 					},
+					workingTreeFile: () => Effect.die("workingTreeFile should not run"),
 				},
 			})
 		);
@@ -158,6 +271,12 @@ describe("show Commit Reviews", () => {
 			kind: "show",
 			patch:
 				"diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new\n",
+			diffFileSnapshots: [
+				{
+					status: "unavailable",
+					reason: "Previous file content is unavailable",
+				},
+			],
 			context: {
 				command: "diffuser show HEAD",
 				args: ["HEAD"],
@@ -192,6 +311,7 @@ describe("show Commit Reviews", () => {
 				cwd: "/repo",
 				now: () => new Date("2026-05-08T03:11:00.000Z"),
 				git: {
+					blob: () => Effect.die("blob should not run"),
 					diff: () => Effect.die("should not run"),
 					showCommit: ({ commitish, pathspec, cwd }) => {
 						calls.push({ command: "show", commitish, pathspec, cwd });
@@ -212,6 +332,7 @@ describe("show Commit Reviews", () => {
 						calls.push({ command: "root", cwd });
 						return Effect.succeed("/repo");
 					},
+					workingTreeFile: () => Effect.die("workingTreeFile should not run"),
 				},
 			})
 		);
@@ -227,6 +348,49 @@ describe("show Commit Reviews", () => {
 		]);
 	});
 
+	test("captures Diff File Snapshots for Commit Reviews from Git blobs", async () => {
+		const patch =
+			"diff --git a/file.txt b/file.txt\nindex 1111111..2222222 100644\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new\n";
+
+		const session = await Effect.runPromise(
+			createReviewSession({
+				argv: ["show", "abc123"],
+				cwd: "/repo",
+				now: () => new Date("2026-05-08T03:15:00.000Z"),
+				git: {
+					blob: ({ objectId }) =>
+						Effect.succeed({
+							stdout: objectId === "1111111" ? "old\n" : "new\n",
+							stderr: "",
+						}),
+					diff: () => Effect.die("should not run"),
+					showCommit: () =>
+						Effect.succeed({
+							metadata: {
+								oid: "abc123def456",
+								shortOid: "abc123",
+								authorName: "Ada Lovelace",
+								authorEmail: "ada@example.com",
+								authoredAt: "2026-05-07T12:00:00+00:00",
+								subject: "Snapshot commit",
+							},
+							patch,
+						}),
+					repositoryRoot: () => Effect.succeed("/repo"),
+					workingTreeFile: () => Effect.die("workingTreeFile should not run"),
+				},
+			})
+		);
+
+		expect(session.diffFileSnapshots).toEqual([
+			{
+				status: "available",
+				oldFile: { name: "file.txt", contents: "old\n" },
+				newFile: { name: "file.txt", contents: "new\n" },
+			},
+		]);
+	});
+
 	test("rejects arbitrary git show formatting options before running Git", async () => {
 		const result = await Effect.runPromise(
 			Effect.either(
@@ -235,9 +399,11 @@ describe("show Commit Reviews", () => {
 					cwd: "/repo",
 					now: () => new Date("2026-05-08T03:12:00.000Z"),
 					git: {
+						blob: () => Effect.die("should not run"),
 						diff: () => Effect.die("should not run"),
 						showCommit: () => Effect.die("should not run"),
 						repositoryRoot: () => Effect.die("should not run"),
+						workingTreeFile: () => Effect.die("should not run"),
 					},
 				})
 			)
@@ -257,6 +423,7 @@ describe("show Commit Reviews", () => {
 					cwd: "/repo",
 					now: () => new Date("2026-05-08T03:13:00.000Z"),
 					git: {
+						blob: () => Effect.die("should not run"),
 						diff: () => Effect.die("should not run"),
 						showCommit: () =>
 							Effect.fail(
@@ -266,6 +433,7 @@ describe("show Commit Reviews", () => {
 								})
 							),
 						repositoryRoot: () => Effect.die("should not run"),
+						workingTreeFile: () => Effect.die("should not run"),
 					},
 				})
 			)
@@ -285,6 +453,7 @@ describe("show Commit Reviews", () => {
 					cwd: "/repo",
 					now: () => new Date("2026-05-08T03:14:00.000Z"),
 					git: {
+						blob: () => Effect.die("should not run"),
 						diff: () => Effect.die("should not run"),
 						showCommit: () =>
 							Effect.succeed({
@@ -299,6 +468,7 @@ describe("show Commit Reviews", () => {
 								patch: "",
 							}),
 						repositoryRoot: () => Effect.die("should not run"),
+						workingTreeFile: () => Effect.die("should not run"),
 					},
 				})
 			)

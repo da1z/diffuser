@@ -73,6 +73,7 @@ const reviewSession = (
 			workingDirectory: "/repo",
 		},
 	},
+	diffFileSnapshots: [],
 	...overrides,
 });
 
@@ -88,9 +89,11 @@ const renderInteractive = (children: ReactNode) => {
 		document: window.document,
 		HTMLElement: window.HTMLElement,
 		HTMLInputElement: window.HTMLInputElement,
+		SVGElement: window.SVGElement,
 		Event: window.Event,
 		MouseEvent: window.MouseEvent,
 		Node: window.Node,
+		ResizeObserver: window.ResizeObserver,
 	});
 
 	const container = document.createElement("div");
@@ -102,6 +105,14 @@ const renderInteractive = (children: ReactNode) => {
 	});
 
 	return { container, root };
+};
+
+const flushInteractiveRender = async () => {
+	await act(async () => {
+		await new Promise((resolve) => {
+			setTimeout(resolve, 10);
+		});
+	});
 };
 
 const FileDiffProbe = ({
@@ -173,6 +184,170 @@ test("configures Pierre hunk affordances for the Continuous Diff View", () => {
 	expect(continuousDiffViewOptions).toEqual({
 		diffStyle: "split",
 		hunkSeparators: "line-info-basic",
+	});
+});
+
+test("enriches Patch file entries with Diff File Snapshots for expandable hunk context", () => {
+	const patch = `diff --git a/file.txt b/file.txt
+index 1111111..2222222 100644
+--- a/file.txt
++++ b/file.txt
+@@ -3 +3 @@
+-old
++new
+`;
+	const renderedFileDiffs: FileDiffRendererProps["fileDiff"][] = [];
+
+	renderToStaticMarkup(
+		<ContinuousPatchDiff
+			DiffRenderer={({ fileDiff }) => {
+				renderedFileDiffs.push(fileDiff);
+				return <article>{fileDiff.name}</article>;
+			}}
+			diffFileSnapshots={[
+				{
+					status: "available",
+					oldFile: { name: "file.txt", contents: "one\ntwo\nold\nfour\n" },
+					newFile: { name: "file.txt", contents: "one\ntwo\nnew\nfour\n" },
+				},
+			]}
+			patch={patch}
+		/>
+	);
+
+	expect(renderedFileDiffs).toHaveLength(1);
+	expect(renderedFileDiffs[0]?.isPartial).toBe(false);
+	expect(renderedFileDiffs[0]?.deletionLines).toEqual([
+		"one\n",
+		"two\n",
+		"old\n",
+		"four\n",
+	]);
+	expect(renderedFileDiffs[0]?.additionLines).toEqual([
+		"one\n",
+		"two\n",
+		"new\n",
+		"four\n",
+	]);
+	expect(renderedFileDiffs[0]?.hunks[0]?.collapsedBefore).toBe(2);
+});
+
+test("expands collapsed unchanged hunk labels when Diff File Snapshots are available", async () => {
+	const unchangedPrefix = Array.from(
+		{ length: 21 },
+		(_, index) => `context line ${index + 1}`
+	);
+	const oldLines = [...unchangedPrefix, "old value", "after value"];
+	const newLines = [...unchangedPrefix, "new value", "after value"];
+	const patch = `diff --git a/file.txt b/file.txt
+index 1111111..2222222 100644
+--- a/file.txt
++++ b/file.txt
+@@ -20,4 +20,4 @@
+ context line 20
+ context line 21
+-old value
++new value
+ after value
+`;
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff
+			diffFileSnapshots={[
+				{
+					status: "available",
+					oldFile: { name: "file.txt", contents: `${oldLines.join("\n")}\n` },
+					newFile: { name: "file.txt", contents: `${newLines.join("\n")}\n` },
+				},
+			]}
+			patch={patch}
+		/>
+	);
+	const fileContainer = container.querySelector("diffs-container");
+	await flushInteractiveRender();
+	const shadowRoot = fileContainer?.shadowRoot;
+	const collapsedLabel = shadowRoot?.querySelector<HTMLElement>(
+		"[data-unmodified-lines]"
+	);
+
+	expect(collapsedLabel?.textContent).toBe("19 unmodified lines");
+	expect(shadowRoot?.textContent).not.toContain("context line 1");
+
+	act(() => {
+		collapsedLabel?.click();
+	});
+	await flushInteractiveRender();
+
+	expect(shadowRoot?.textContent).toContain("context line 1");
+
+	act(() => {
+		root.unmount();
+	});
+});
+
+test("expands collapsed unchanged hunk labels between changed regions", async () => {
+	const unchangedMiddle = Array.from(
+		{ length: 17 },
+		(_, index) => `middle context line ${index + 1}`
+	);
+	const oldLines = [
+		"first old",
+		"shared prefix",
+		...unchangedMiddle,
+		"shared suffix",
+		"second old",
+	];
+	const newLines = [
+		"first new",
+		"shared prefix",
+		...unchangedMiddle,
+		"shared suffix",
+		"second new",
+	];
+	const patch = `diff --git a/file.txt b/file.txt
+index 1111111..2222222 100644
+--- a/file.txt
++++ b/file.txt
+@@ -1,2 +1,2 @@
+-first old
++first new
+ shared prefix
+@@ -19,3 +19,3 @@
+ middle context line 17
+ shared suffix
+-second old
++second new
+`;
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff
+			diffFileSnapshots={[
+				{
+					status: "available",
+					oldFile: { name: "file.txt", contents: `${oldLines.join("\n")}\n` },
+					newFile: { name: "file.txt", contents: `${newLines.join("\n")}\n` },
+				},
+			]}
+			patch={patch}
+		/>
+	);
+	const fileContainer = container.querySelector("diffs-container");
+	await flushInteractiveRender();
+	const shadowRoot = fileContainer?.shadowRoot;
+	const collapsedLabel = Array.from(
+		shadowRoot?.querySelectorAll<HTMLElement>("[data-unmodified-lines]") ?? []
+	).find((label) => label.textContent === "16 unmodified lines");
+
+	expect(collapsedLabel?.textContent).toBe("16 unmodified lines");
+	expect(shadowRoot?.textContent).not.toContain("middle context line 5");
+
+	act(() => {
+		collapsedLabel?.click();
+	});
+	await flushInteractiveRender();
+
+	expect(shadowRoot?.textContent).toContain("middle context line 5");
+
+	act(() => {
+		root.unmount();
 	});
 });
 
