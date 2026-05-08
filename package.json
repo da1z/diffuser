@@ -4,6 +4,7 @@
     "react-dom": "^19"
   },
   "devDependencies": {
+    "@ai-hero/sandcastle": "file:../sandcastle/ai-hero-sandcastle-0.5.7.tgz",
     "@biomejs/biome": "2.4.14",
     "@types/bun": "latest",
     "@types/react": "^19",
