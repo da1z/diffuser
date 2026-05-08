@@ -530,6 +530,86 @@ index 1111111..2222222 100644
 	expect(renderedFileDiffs[0]?.hunks[0]?.collapsedBefore).toBe(2);
 });
 
+test("aligns multi-file Diff File Snapshots by Patch order in the Continuous Diff View", () => {
+	const patch = `diff --git a/first.txt b/first.txt
+index 1111111..2222222 100644
+--- a/first.txt
++++ b/first.txt
+@@ -2 +2 @@
+-first old
++first new
+diff --git a/middle.txt b/middle.txt
+index 3333333..4444444 100644
+--- a/middle.txt
++++ b/middle.txt
+@@ -2 +2 @@
+-middle old
++middle new
+diff --git a/third.txt b/third.txt
+index 5555555..6666666 100644
+--- a/third.txt
++++ b/third.txt
+@@ -2 +2 @@
+-third old
++third new
+`;
+	const renderedFileDiffs: FileDiffRendererProps["fileDiff"][] = [];
+
+	renderToStaticMarkup(
+		<ContinuousPatchDiff
+			DiffRenderer={({ fileDiff }) => {
+				renderedFileDiffs.push(fileDiff);
+				return <article>{fileDiff.name}</article>;
+			}}
+			diffFileSnapshots={[
+				{
+					status: "available",
+					oldFile: {
+						name: "first.txt",
+						contents: "first context\nfirst old\n",
+					},
+					newFile: {
+						name: "first.txt",
+						contents: "first context\nfirst new\n",
+					},
+				},
+				{
+					status: "unavailable",
+					reason: "Middle file content is unavailable",
+				},
+				{
+					status: "available",
+					oldFile: {
+						name: "third.txt",
+						contents: "third context\nthird old\n",
+					},
+					newFile: {
+						name: "third.txt",
+						contents: "third context\nthird new\n",
+					},
+				},
+			]}
+			patch={patch}
+		/>
+	);
+
+	expect(renderedFileDiffs).toHaveLength(3);
+	expect(renderedFileDiffs[0]?.name).toBe("first.txt");
+	expect(renderedFileDiffs[0]?.isPartial).toBe(false);
+	expect(renderedFileDiffs[0]?.deletionLines).toEqual([
+		"first context\n",
+		"first old\n",
+	]);
+	expect(renderedFileDiffs[1]?.name).toBe("middle.txt");
+	expect(renderedFileDiffs[1]?.isPartial).toBe(true);
+	expect(renderedFileDiffs[2]?.name).toBe("third.txt");
+	expect(renderedFileDiffs[2]?.isPartial).toBe(false);
+	expect(renderedFileDiffs[2]?.additionLines).toEqual([
+		"third context\n",
+		"third new\n",
+	]);
+});
+
 test("expands collapsed unchanged hunk labels when Diff File Snapshots are available", async () => {
 	const unchangedPrefix = Array.from(
 		{ length: 21 },
