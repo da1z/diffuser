@@ -114,7 +114,7 @@ interface RenderedLinePosition {
 	readonly additionLine: number | undefined;
 	readonly deletionLine: number | undefined;
 	readonly kind: RenderedLineKind;
-	readonly position: number;
+	readonly renderedPosition: number;
 }
 
 interface RenderedLinePositions {
@@ -136,6 +136,28 @@ const isDefined = <Value>(value: Value | undefined): value is Value =>
 const isSafeLineNumber = (lineNumber: number) =>
 	Number.isSafeInteger(lineNumber);
 
+const selectionRangeLength = (start: number, end: number) => end - start + 1;
+
+const isSelectableLineRange = ({
+	availableLineCount,
+	end,
+	start,
+}: {
+	readonly availableLineCount: number;
+	readonly end: number;
+	readonly start: number;
+}) => {
+	const rangeLength = selectionRangeLength(start, end);
+
+	return (
+		isSafeLineNumber(start) &&
+		isSafeLineNumber(end) &&
+		Number.isSafeInteger(rangeLength) &&
+		rangeLength > 0 &&
+		rangeLength <= availableLineCount
+	);
+};
+
 const renderedLinePositionsForHunk = (
 	hunk: Hunk,
 	positions: {
@@ -154,7 +176,7 @@ const renderedLinePositionsForHunk = (
 					additionLine: additionLine + offset,
 					deletionLine: deletionLine + offset,
 					kind: "context",
-					position: renderedPosition + offset,
+					renderedPosition: renderedPosition + offset,
 				} as const;
 				positions.additions.set(position.additionLine, position);
 				positions.deletions.set(position.deletionLine, position);
@@ -170,7 +192,7 @@ const renderedLinePositionsForHunk = (
 				additionLine: undefined,
 				deletionLine: deletionLine + offset,
 				kind: "deletion",
-				position: renderedPosition + offset,
+				renderedPosition: renderedPosition + offset,
 			} as const;
 			positions.deletions.set(position.deletionLine, position);
 		}
@@ -179,7 +201,7 @@ const renderedLinePositionsForHunk = (
 				additionLine: additionLine + offset,
 				deletionLine: undefined,
 				kind: "addition",
-				position: renderedPosition + offset,
+				renderedPosition: renderedPosition + offset,
 			} as const;
 			positions.additions.set(position.additionLine, position);
 		}
@@ -216,16 +238,13 @@ const positionsForSelection = ({
 	const [start, end] = ascendingRange(selection.start, selection.end);
 	const positionMap =
 		side === "additions" ? positions.additions : positions.deletions;
-	const rangeLength = end - start + 1;
 
 	if (
-		!(
-			isSafeLineNumber(start) &&
-			isSafeLineNumber(end) &&
-			Number.isSafeInteger(rangeLength)
-		) ||
-		rangeLength <= 0 ||
-		rangeLength > positionMap.size
+		!isSelectableLineRange({
+			availableLineCount: positionMap.size,
+			end,
+			start,
+		})
 	) {
 		return [];
 	}
@@ -294,7 +313,7 @@ export const draftReviewCommentAnchorForSelection = ({
 	}
 
 	const position = Math.min(
-		...positions.map((renderedLine) => renderedLine.position)
+		...positions.map((renderedLine) => renderedLine.renderedPosition)
 	);
 
 	if (side === "additions") {

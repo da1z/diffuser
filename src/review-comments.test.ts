@@ -169,18 +169,25 @@ rename to src/new.ts
 });
 
 test("rejects invalid Pierre selections without creating Comment Anchors", () => {
-	expect(
-		anchorForSelection({
-			end: Number.POSITIVE_INFINITY,
-			side: "additions",
-			start: 11,
-		})
-	).toBeUndefined();
+	const invalidSelections: readonly SelectedLineRange[] = [
+		{ end: Number.POSITIVE_INFINITY, side: "additions", start: 11 },
+		{ end: 11, side: "additions", start: Number.NaN },
+		{ end: 11.5, side: "additions", start: 11 },
+		{
+			end: Number.MAX_SAFE_INTEGER,
+			side: "deletions",
+			start: -Number.MAX_SAFE_INTEGER,
+		},
+	];
+
+	for (const selection of invalidSelections) {
+		expect(anchorForSelection(selection)).toBeUndefined();
+	}
 });
 
 test("conforms Pierre side-by-side selections to exported Comment Anchors", () => {
 	const cases: readonly {
-		readonly expected: ReturnType<typeof anchorForSelection> | undefined;
+		readonly expected: ReturnType<typeof anchorForSelection>;
 		readonly name: string;
 		readonly selection: SelectedLineRange;
 	}[] = [
