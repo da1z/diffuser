@@ -8,33 +8,34 @@ import {
 	type DraftReviewCommentCopyClearState,
 } from "./draft-review-comment-copy-clear-policy";
 
-const draftReviewCommentState = (): DraftReviewCommentCopyClearState => ({
-	copyError: "Could not copy review.",
-	draftReviewCommentState: {
-		nextCommentId: 2,
-		submittedComments: [
-			{
-				anchor: {
-					fileKey: "0\0src/file.ts",
-					fileOrder: 0,
-					path: "src/file.ts",
-					position: 10,
-					side: "new",
-					startLine: 4,
-					endLine: 4,
+const draftReviewCommentCopyClearState =
+	(): DraftReviewCommentCopyClearState => ({
+		copyError: copyReviewErrorMessage,
+		draftReviewCommentState: {
+			nextCommentId: 2,
+			submittedComments: [
+				{
+					anchor: {
+						fileKey: "0\0src/file.ts",
+						fileOrder: 0,
+						path: "src/file.ts",
+						position: 10,
+						side: "new",
+						startLine: 4,
+						endLine: 4,
+					},
+					body: "Please simplify this branch.",
+					id: "draft-review-comment-1",
+					order: 1,
 				},
-				body: "Please simplify this branch.",
-				id: "draft-review-comment-1",
-				order: 1,
-			},
-		],
-	},
-});
+			],
+		},
+	});
 
 test("successful Review Summary copy clears submitted Draft Review Comments and copy errors", async () => {
 	const clipboardWrites: string[] = [];
 	const result = await copyDraftReviewCommentsToClipboard(
-		draftReviewCommentState(),
+		draftReviewCommentCopyClearState(),
 		{
 			writeText: (text) => {
 				clipboardWrites.push(text);
@@ -58,7 +59,7 @@ Please simplify this branch.`,
 });
 
 test("failed Review Summary copy keeps submitted Draft Review Comments and surfaces the copy error", async () => {
-	const state = draftReviewCommentState();
+	const state = draftReviewCommentCopyClearState();
 	const result = await copyDraftReviewCommentsToClipboard(state, {
 		writeText: () => Promise.reject(new Error("Clipboard blocked.")),
 	});
@@ -70,7 +71,7 @@ test("failed Review Summary copy keeps submitted Draft Review Comments and surfa
 });
 
 test("unavailable clipboard keeps submitted Draft Review Comments and surfaces the copy error", async () => {
-	const state = draftReviewCommentState();
+	const state = draftReviewCommentCopyClearState();
 	const result = await copyDraftReviewCommentsToClipboard(state, undefined);
 
 	expect(result).toEqual({
@@ -81,7 +82,7 @@ test("unavailable clipboard keeps submitted Draft Review Comments and surfaces t
 
 test("manual clear removes submitted Draft Review Comments only after confirmation", () => {
 	const confirmationMessages: string[] = [];
-	const state = draftReviewCommentState();
+	const state = draftReviewCommentCopyClearState();
 	const cancelled = confirmClearDraftReviewComments(state, (message) => {
 		confirmationMessages.push(message);
 
