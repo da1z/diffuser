@@ -6,6 +6,7 @@ import {
 	reviewSessionHost,
 	reviewSessionShutdownEndpoint,
 } from "./protocol";
+import { sessionEndpointPayloadFromReviewSession } from "./session-endpoint-payload";
 import type { ReviewSession } from "./workflow";
 
 export interface ReviewServerOptions {
@@ -81,7 +82,9 @@ export const serveReviewSession = ({
 				GET: () => {
 					pendingShutdown.cancel();
 
-					return Response.json(session);
+					return Response.json(
+						sessionEndpointPayloadFromReviewSession(session)
+					);
 				},
 				POST: readOnlyResponse,
 				PUT: readOnlyResponse,

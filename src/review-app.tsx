@@ -17,6 +17,7 @@ import {
 	reviewSessionEndpoint,
 	reviewSessionShutdownEndpoint,
 } from "./diffuser/protocol";
+import { reviewSessionFromSessionEndpointPayload } from "./diffuser/session-endpoint-payload";
 import type { DiffFileSnapshot, ReviewSession } from "./diffuser/workflow";
 import {
 	type FileReviewStates,
@@ -433,7 +434,7 @@ export const loadReviewSession = async (
 		throw new Error("Review Session could not be loaded.");
 	}
 
-	return response.json() as Promise<ReviewSession>;
+	return reviewSessionFromSessionEndpointPayload(await response.json());
 };
 
 const notifyReviewSessionPageHidden = () => {

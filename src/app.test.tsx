@@ -412,6 +412,20 @@ test("loads the Review Session from the Session Endpoint", async () => {
 	expect(loaded).toEqual(session);
 });
 
+test("rejects malformed Session Endpoint payloads before rendering", async () => {
+	await expect(
+		loadReviewSession(() =>
+			Promise.resolve(
+				Response.json({
+					id: "diff-2026-05-08T02:41:00.000Z",
+					mode: "read-only",
+					kind: "diff",
+				})
+			)
+		)
+	).rejects.toThrow("Session Endpoint payload is invalid.");
+});
+
 test("notifies the One-shot Server when the Local Review UI unloads", () => {
 	const shutdownRequests: string[] = [];
 	const { root } = renderInteractive(<App initialSession={reviewSession()} />);

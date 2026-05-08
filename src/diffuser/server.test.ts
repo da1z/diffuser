@@ -6,6 +6,10 @@ import {
 	reviewSessionShutdownEndpoint,
 } from "./protocol";
 import { serveReviewSession } from "./server";
+import {
+	type SessionEndpointPayload,
+	sessionEndpointPayloadFromReviewSession,
+} from "./session-endpoint-payload";
 import type { ReviewSession } from "./workflow";
 
 const session: ReviewSession = {
@@ -32,6 +36,9 @@ const wait = (milliseconds: number) =>
 
 test("serves the captured Review Session through a read-only endpoint", async () => {
 	const server = serveReviewSession({ session });
+	const expectedPayload = sessionEndpointPayloadFromReviewSession(
+		session
+	) satisfies SessionEndpointPayload;
 
 	try {
 		expect(server.url.hostname).toBe(reviewSessionHost);
@@ -40,7 +47,7 @@ test("serves the captured Review Session through a read-only endpoint", async ()
 			new URL(reviewSessionEndpoint, server.url)
 		);
 		expect(sessionResponse.status).toBe(200);
-		expect(await sessionResponse.json()).toEqual(session);
+		expect(await sessionResponse.json()).toEqual(expectedPayload);
 
 		const mutationResponse = await fetch(
 			new URL(reviewSessionEndpoint, server.url),
