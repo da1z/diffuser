@@ -46,6 +46,20 @@ diff --git a/a.txt b/a.txt
 +new
 `;
 
+const draftCommentPatch = `diff --git a/old-name.txt b/new-name.txt
+similarity index 88%
+rename from old-name.txt
+rename to new-name.txt
+--- a/old-name.txt
++++ b/new-name.txt
+@@ -1,3 +1,4 @@
+ shared before
+-old line
++new line
+ unchanged after
++added tail
+`;
+
 const patchWithRenderedContextRows = (fileName: string, rows: number) => {
 	const lines = Array.from(
 		{ length: rows },
@@ -159,7 +173,7 @@ const FileDiffProbe = ({
 					<button
 						aria-label="Select added line"
 						onClick={() => {
-							options?.onLineSelected?.({
+							options?.onLineSelectionEnd?.({
 								end: 1,
 								side: "additions",
 								start: 1,
@@ -171,13 +185,18 @@ const FileDiffProbe = ({
 					</button>
 					{lineAnnotations?.map((annotation) => (
 						<div
+							data-anchor-line={annotation.metadata?.anchor.startLine}
+							data-anchor-path={annotation.metadata?.anchor.path}
+							data-anchor-side={annotation.metadata?.anchor.side}
 							data-annotation-line={annotation.lineNumber}
 							data-annotation-side={annotation.side}
 							key={[
 								annotation.side,
 								annotation.lineNumber,
 								annotation.metadata?.kind ?? "unknown",
-								annotation.metadata?.comment?.id ?? "active",
+								annotation.metadata?.kind === "comment"
+									? annotation.metadata.comment.id
+									: "active",
 							].join(":")}
 						>
 							{renderAnnotation?.(annotation)}
@@ -622,6 +641,138 @@ test("keeps Draft Review Comments when copying fails", async () => {
 
 	expect(container.textContent).toContain("Do not lose this.");
 	expect(container.textContent).toContain("Could not copy review.");
+
+	act(() => {
+		root.unmount();
+	});
+});
+
+test("supports side-aware inline Draft Review Comments in the Local Review UI", () => {
+	let currentFileDiff: FileDiffRendererProps | undefined;
+	const CapturingFileDiffProbe = (props: FileDiffRendererProps) => {
+		currentFileDiff = props;
+
+		return <FileDiffProbe {...props} />;
+	};
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={CapturingFileDiffProbe}
+			patch={draftCommentPatch}
+		/>
+	);
+	const selectLines = (range: {
+		readonly start: number;
+		readonly end: number;
+		readonly side: "deletions" | "additions";
+		readonly endSide?: "deletions" | "additions";
+	}) => {
+		act(() => {
+			currentFileDiff?.options?.onLineSelectionEnd?.(range);
+		});
+	};
+	const submitDraft = (comment: string) => {
+		const textarea = container.querySelector<HTMLTextAreaElement>(
+			'textarea[aria-label="Draft review comment"]'
+		);
+		const submit = container.querySelector<HTMLButtonElement>(
+			'button[aria-label="Submit draft review comment"]'
+		);
+
+		if (textarea === null || submit === null) {
+			throw new Error("Expected an open Draft Review Comment form.");
+		}
+
+		textarea.value = comment;
+		act(() => {
+			submit.click();
+		});
+	};
+	const cancelDraft = () => {
+		act(() => {
+			container
+				.querySelector<HTMLButtonElement>(
+					'button[aria-label="Cancel draft review comment"]'
+				)
+				?.click();
+		});
+	};
+	const discardDraft = (comment: string) => {
+		const discardButton = Array.from(
+			container.querySelectorAll<HTMLButtonElement>(
+				'button[aria-label="Discard draft review comment"]'
+			)
+		).find((button) =>
+			button.closest("[data-draft-comment]")?.textContent?.includes(comment)
+		);
+
+		act(() => {
+			discardButton?.click();
+		});
+	};
+	const commentTexts = () =>
+		Array.from(container.querySelectorAll("[data-draft-comment]")).map(
+			(comment) => comment.textContent ?? ""
+		);
+
+	expect(currentFileDiff?.options?.enableLineSelection).toBe(true);
+
+	selectLines({ start: 2, end: 2, side: "additions" });
+	expect(
+		container.querySelector('textarea[aria-label="Draft review comment"]')
+	).not.toBeNull();
+	cancelDraft();
+	expect(container.querySelector("[data-draft-comment]")).toBeNull();
+	expect(currentFileDiff?.selectedLines).toBeNull();
+
+	selectLines({ start: 2, end: 2, side: "additions" });
+	submitDraft("   ");
+	expect(container.querySelector("[data-draft-comment]")).toBeNull();
+
+	selectLines({ start: 4, end: 2, side: "additions" });
+	submitDraft("Please check the new flow.");
+	selectLines({ start: 4, end: 2, side: "additions" });
+	submitDraft("A second note for the same range.");
+	expect(commentTexts()).toHaveLength(2);
+	expect(commentTexts()[0]).toContain("new-name.txt:2-4 [new]");
+	expect(commentTexts()[0]).toContain("Please check the new flow.");
+	expect(commentTexts()[1]).toContain("new-name.txt:2-4 [new]");
+	expect(commentTexts()[1]).toContain("A second note for the same range.");
+	expect(
+		Array.from(container.querySelectorAll("[data-anchor-path]")).map(
+			(annotation) => [
+				annotation.getAttribute("data-anchor-path"),
+				annotation.getAttribute("data-anchor-side"),
+				annotation.getAttribute("data-anchor-line"),
+				annotation.getAttribute("data-annotation-side"),
+				annotation.getAttribute("data-annotation-line"),
+			]
+		)
+	).toEqual([
+		["new-name.txt", "new", "2", "additions", "4"],
+		["new-name.txt", "new", "2", "additions", "4"],
+	]);
+
+	discardDraft("Please check the new flow.");
+	expect(commentTexts()).toHaveLength(1);
+	expect(commentTexts()[0]).toContain("new-name.txt:2-4 [new]");
+	expect(commentTexts()[0]).toContain("A second note for the same range.");
+
+	selectLines({ start: 2, end: 2, side: "deletions" });
+	submitDraft("Deleted line concern.");
+	selectLines({ start: 3, end: 3, side: "deletions" });
+	submitDraft("Context should anchor to the new side.");
+	expect(commentTexts()).toHaveLength(3);
+	expect(commentTexts()[0]).toContain("new-name.txt:2-4 [new]");
+	expect(commentTexts()[0]).toContain("A second note for the same range.");
+	expect(commentTexts()[1]).toContain("old-name.txt:2 [old/deleted]");
+	expect(commentTexts()[1]).toContain("Deleted line concern.");
+	expect(commentTexts()[2]).toContain("new-name.txt:3 [new]");
+	expect(commentTexts()[2]).toContain("Context should anchor to the new side.");
+
+	selectLines({ start: 2, end: 2, side: "deletions", endSide: "additions" });
+	expect(
+		container.querySelector('textarea[aria-label="Draft review comment"]')
+	).toBeNull();
 
 	act(() => {
 		root.unmount();
