@@ -20,7 +20,7 @@ const session: ReviewSession = {
 };
 
 test("serves the captured Review Session through a read-only endpoint", async () => {
-	const server = serveReviewSession({ session, open: false });
+	const server = serveReviewSession({ session });
 
 	try {
 		const sessionResponse = await fetch(new URL("/api/session", server.url));

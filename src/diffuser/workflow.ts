@@ -90,28 +90,26 @@ export const parseDiffuserCommand = (
 
 	const subcommand = argv[index];
 
-	if (subcommand === undefined) {
-		return { kind: "help", openBrowser };
+	switch (subcommand) {
+		case "diff":
+			return {
+				kind: "diff",
+				openBrowser,
+				gitArgs: argv.slice(index + 1),
+			};
+		case "show":
+			return {
+				kind: "show",
+				openBrowser,
+				gitArgs: argv.slice(index + 1),
+			};
+		default:
+			return { kind: "help", openBrowser };
 	}
-
-	if (subcommand === "diff") {
-		return {
-			kind: "diff",
-			openBrowser,
-			gitArgs: argv.slice(index + 1),
-		};
-	}
-
-	if (subcommand === "show") {
-		return {
-			kind: "show",
-			openBrowser,
-			gitArgs: argv.slice(index + 1),
-		};
-	}
-
-	return { kind: "help", openBrowser };
 };
+
+const formatDiffCommand = (args: readonly string[]) =>
+	["diffuser", "diff", ...args].join(" ");
 
 const runGit = (
 	cwd: string,
@@ -185,7 +183,7 @@ export const createDiffReviewSession = ({
 			kind: "diff",
 			patch,
 			context: {
-				command: ["diffuser", "diff", ...command.gitArgs].join(" "),
+				command: formatDiffCommand(command.gitArgs),
 				args: command.gitArgs,
 				capturedAt,
 				repository: {

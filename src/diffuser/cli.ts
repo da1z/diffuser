@@ -12,19 +12,23 @@ import {
 	parseDiffuserCommand,
 } from "./workflow";
 
+const browserCommand = (
+	platform: typeof process.platform,
+	url: string
+): string[] => {
+	switch (platform) {
+		case "darwin":
+			return ["open", url];
+		case "win32":
+			return ["cmd", "/c", "start", "", url];
+		default:
+			return ["xdg-open", url];
+	}
+};
+
 const openBrowser = (url: string) => {
-	let command = ["xdg-open", url];
-
-	if (process.platform === "darwin") {
-		command = ["open", url];
-	}
-
-	if (process.platform === "win32") {
-		command = ["cmd", "/c", "start", "", url];
-	}
-
 	try {
-		spawn(command, {
+		spawn(browserCommand(process.platform, url), {
 			stdout: "ignore",
 			stderr: "ignore",
 		});

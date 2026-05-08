@@ -4,9 +4,11 @@ import index from "../index.html";
 import type { ReviewSession } from "./workflow";
 
 export interface ReviewServerOptions {
-	readonly open?: boolean;
 	readonly session: ReviewSession;
 }
+
+const readOnlyResponse = () =>
+	new Response("Review Sessions are read-only.", { status: 405 });
 
 export const serveReviewSession = ({
 	session,
@@ -17,14 +19,10 @@ export const serveReviewSession = ({
 		routes: {
 			"/api/session": {
 				GET: () => Response.json(session),
-				POST: () =>
-					new Response("Review Sessions are read-only.", { status: 405 }),
-				PUT: () =>
-					new Response("Review Sessions are read-only.", { status: 405 }),
-				PATCH: () =>
-					new Response("Review Sessions are read-only.", { status: 405 }),
-				DELETE: () =>
-					new Response("Review Sessions are read-only.", { status: 405 }),
+				POST: readOnlyResponse,
+				PUT: readOnlyResponse,
+				PATCH: readOnlyResponse,
+				DELETE: readOnlyResponse,
 			},
 			"/*": index,
 		},
