@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 
+import { reviewSessionEndpoint, reviewSessionHost } from "./protocol";
 import { serveReviewSession } from "./server";
 import type { ReviewSession } from "./workflow";
 
@@ -23,15 +24,20 @@ test("serves the captured Review Session through a read-only endpoint", async ()
 	const server = serveReviewSession({ session });
 
 	try {
-		expect(server.url.hostname).toBe("127.0.0.1");
+		expect(server.url.hostname).toBe(reviewSessionHost);
 
-		const sessionResponse = await fetch(new URL("/api/session", server.url));
+		const sessionResponse = await fetch(
+			new URL(reviewSessionEndpoint, server.url)
+		);
 		expect(sessionResponse.status).toBe(200);
 		expect(await sessionResponse.json()).toEqual(session);
 
-		const mutationResponse = await fetch(new URL("/api/session", server.url), {
-			method: "POST",
-		});
+		const mutationResponse = await fetch(
+			new URL(reviewSessionEndpoint, server.url),
+			{
+				method: "POST",
+			}
+		);
 		expect(mutationResponse.status).toBe(405);
 	} finally {
 		server.stop(true);

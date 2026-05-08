@@ -1,6 +1,6 @@
-import type { Server } from "bun";
 import { Effect } from "effect";
 
+import { formatReviewSessionLine } from "./protocol";
 import {
 	createDiffReviewSession,
 	type DiffWorkflowInput,
@@ -45,7 +45,7 @@ export const launchDiffReviewSession = ({
 		const server = serve(session);
 		const url = server.url.toString();
 
-		printLine(`Review Session: ${url}`);
+		printLine(formatReviewSessionLine(url));
 
 		if (command.openBrowser) {
 			openBrowser(url);
@@ -53,5 +53,3 @@ export const launchDiffReviewSession = ({
 
 		return { server, session, url };
 	});
-
-export type DiffuserServer = Server<undefined>;

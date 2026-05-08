@@ -2,6 +2,7 @@
 import { spawn } from "bun";
 import { Cause, Effect, Exit, Option } from "effect";
 
+import { formatReviewSessionLine } from "./protocol";
 import { launchDiffReviewSession } from "./runtime";
 import { serveReviewSession } from "./server";
 import {
@@ -34,9 +35,13 @@ const openBrowser = (url: string) => {
 		});
 	} catch {
 		console.error(
-			`Could not open browser automatically. Review Session: ${url}`
+			`Could not open browser automatically. ${formatReviewSessionLine(url)}`
 		);
 	}
+};
+
+const keepReviewSessionAlive = () => {
+	process.stdin.resume();
 };
 
 const argv = process.argv.slice(2);
@@ -79,4 +84,4 @@ if (Exit.isFailure(exit)) {
 	process.exit(1);
 }
 
-process.stdin.resume();
+keepReviewSessionAlive();

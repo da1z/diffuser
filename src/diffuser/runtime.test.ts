@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { Effect } from "effect";
 
+import { formatReviewSessionLine } from "./protocol";
 import { launchDiffReviewSession } from "./runtime";
 import type { ReviewSession } from "./workflow";
 
@@ -37,7 +38,9 @@ test("launches a one-shot Review Session and opens the Local Review UI by defaul
 
 	expect(launch.url).toBe("http://127.0.0.1:49152/");
 	expect(servedSessions).toEqual([launch.session]);
-	expect(printedLines).toEqual(["Review Session: http://127.0.0.1:49152/"]);
+	expect(printedLines).toEqual([
+		formatReviewSessionLine("http://127.0.0.1:49152/"),
+	]);
 	expect(openedUrls).toEqual(["http://127.0.0.1:49152/"]);
 });
 
@@ -68,6 +71,8 @@ test("--no-open prints the URL without opening a browser", async () => {
 		})
 	);
 
-	expect(printedLines).toEqual(["Review Session: http://127.0.0.1:49153/"]);
+	expect(printedLines).toEqual([
+		formatReviewSessionLine("http://127.0.0.1:49153/"),
+	]);
 	expect(openedUrls).toEqual([]);
 });
