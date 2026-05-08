@@ -207,6 +207,80 @@ describe("diff Review Sessions", () => {
 		]);
 	});
 
+	test("captures multi-file Diff File Snapshots with unavailable slots while preserving the Patch", async () => {
+		const patch = `diff --git a/first.txt b/first.txt
+index 1111111..2222222 100644
+--- a/first.txt
++++ b/first.txt
+@@ -1 +1 @@
+-first old
++first new
+diff --git a/middle.txt b/middle.txt
+index 3333333..4444444 100644
+--- a/middle.txt
++++ b/middle.txt
+@@ -1 +1 @@
+-middle old
++middle new
+diff --git a/third.txt b/third.txt
+index 5555555..6666666 100644
+--- a/third.txt
++++ b/third.txt
+@@ -1 +1 @@
+-third old
++third new
+`;
+		const blobContents: Record<string, string | undefined> = {
+			"1111111": "first old\n",
+			"2222222": "first new\n",
+			"5555555": "third old\n",
+			"6666666": "third new\n",
+		};
+
+		const session = await Effect.runPromise(
+			createDiffReviewSession({
+				argv: ["diff"],
+				cwd: "/repo",
+				now: () => new Date("2026-05-08T02:41:00.000Z"),
+				git: {
+					diff: () => Effect.succeed({ stdout: patch, stderr: "" }),
+					showCommit: () => Effect.die("should not run"),
+					blob: ({ objectId }) => {
+						const stdout = blobContents[objectId];
+
+						return stdout === undefined
+							? Effect.fail(
+									new GitError({
+										message: `${objectId} content is unavailable`,
+									})
+								)
+							: Effect.succeed({ stdout, stderr: "" });
+					},
+					workingTreeFile: () => Effect.die("workingTreeFile should not run"),
+					repositoryRoot: () => Effect.succeed("/repo"),
+				},
+			})
+		);
+
+		expect(session.patch).toBe(patch);
+		expect(session.diffFileSnapshots).toEqual([
+			{
+				status: "available",
+				oldFile: { name: "first.txt", contents: "first old\n" },
+				newFile: { name: "first.txt", contents: "first new\n" },
+			},
+			{
+				status: "unavailable",
+				reason: "3333333 content is unavailable",
+			},
+			{
+				status: "available",
+				oldFile: { name: "third.txt", contents: "third old\n" },
+				newFile: { name: "third.txt", contents: "third new\n" },
+			},
+		]);
+	});
+
 	test("falls back to the working tree for plain diff new-side snapshots", async () => {
 		const patch =
 			"diff --git a/file.txt b/file.txt\nindex 1111111..2222222 100644\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new\n";

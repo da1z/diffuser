@@ -1,7 +1,6 @@
 import {
 	type DiffLineAnnotation,
 	type FileDiffOptions,
-	parsePatchFiles,
 	processFile,
 	type SelectedLineRange,
 } from "@pierre/diffs";
@@ -12,6 +11,7 @@ import {
 } from "@pierre/diffs/react";
 import { type ComponentType, useEffect, useMemo, useState } from "react";
 
+import { alignPatchFileEntries } from "./diffuser/patch-file-entries";
 import {
 	reviewSessionEndpoint,
 	reviewSessionShutdownEndpoint,
@@ -154,17 +154,6 @@ const initialFileReviewStatesFor = (fileDiffs: readonly ParsedFileDiff[]) =>
 		])
 	) satisfies FileReviewStates;
 
-const splitPatchIntoFileEntries = (patch: string) => {
-	const matches = Array.from(patch.matchAll(/^diff --git .+$/gm));
-
-	return matches.map((match, index) => {
-		const start = match.index ?? 0;
-		const nextStart = matches[index + 1]?.index ?? patch.length;
-
-		return patch.slice(start, nextStart);
-	});
-};
-
 const enrichFileDiffWithSnapshot = ({
 	fileDiff,
 	patchFileEntry,
@@ -180,6 +169,7 @@ const enrichFileDiffWithSnapshot = ({
 
 	return (
 		processFile(patchFileEntry, {
+			isGitDiff: true,
 			oldFile: snapshot.oldFile,
 			newFile: snapshot.newFile,
 		}) ?? fileDiff
@@ -189,19 +179,15 @@ const enrichFileDiffWithSnapshot = ({
 const parsedFileDiffsFor = (
 	patch: string,
 	diffFileSnapshots: readonly DiffFileSnapshot[]
-) => {
-	const patchFileEntries = splitPatchIntoFileEntries(patch);
-
-	return parsePatchFiles(patch)
-		.flatMap((parsedPatch) => parsedPatch.files)
-		.map((fileDiff, index) =>
+) =>
+	alignPatchFileEntries({ patch, snapshots: diffFileSnapshots }).map(
+		({ fileDiff, patchFileEntry, snapshot }) =>
 			enrichFileDiffWithSnapshot({
 				fileDiff,
-				patchFileEntry: patchFileEntries[index],
-				snapshot: diffFileSnapshots[index],
+				patchFileEntry,
+				snapshot,
 			})
-		);
-};
+	);
 
 interface FileCollapseToggleProps {
 	readonly collapsed: boolean;

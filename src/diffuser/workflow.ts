@@ -1,6 +1,8 @@
-import { type FileDiffMetadata, parsePatchFiles } from "@pierre/diffs";
+import type { FileDiffMetadata } from "@pierre/diffs";
 import { $, file } from "bun";
 import { Data, Effect } from "effect";
+
+import { parsePatchFileEntries } from "./patch-file-entries";
 
 export type DiffuserCommand =
 	| {
@@ -468,17 +470,15 @@ const createDiffFileSnapshots = ({
 	readonly repositoryRoot: string;
 }) =>
 	Effect.all(
-		parsePatchFiles(patch)
-			.flatMap((parsedPatch) => parsedPatch.files)
-			.map((fileDiff) =>
-				createDiffFileSnapshot({
-					allowWorkingTreeFallback,
-					cwd,
-					fileDiff,
-					git,
-					repositoryRoot,
-				})
-			),
+		parsePatchFileEntries(patch).map(({ fileDiff }) =>
+			createDiffFileSnapshot({
+				allowWorkingTreeFallback,
+				cwd,
+				fileDiff,
+				git,
+				repositoryRoot,
+			})
+		),
 		{ concurrency: 1 }
 	);
 
