@@ -89,9 +89,11 @@ const renderInteractive = (children: ReactNode) => {
 		document: window.document,
 		HTMLElement: window.HTMLElement,
 		HTMLInputElement: window.HTMLInputElement,
+		SVGElement: window.SVGElement,
 		Event: window.Event,
 		MouseEvent: window.MouseEvent,
 		Node: window.Node,
+		ResizeObserver: window.ResizeObserver,
 	});
 
 	const container = document.createElement("div");
@@ -103,6 +105,14 @@ const renderInteractive = (children: ReactNode) => {
 	});
 
 	return { container, root };
+};
+
+const flushInteractiveRender = async () => {
+	await act(async () => {
+		await new Promise((resolve) => {
+			setTimeout(resolve, 10);
+		});
+	});
 };
 
 const FileDiffProbe = ({
@@ -220,6 +230,58 @@ index 1111111..2222222 100644
 		"four\n",
 	]);
 	expect(renderedFileDiffs[0]?.hunks[0]?.collapsedBefore).toBe(2);
+});
+
+test("expands collapsed unchanged hunk labels when Diff File Snapshots are available", async () => {
+	const unchangedPrefix = Array.from(
+		{ length: 21 },
+		(_, index) => `context line ${index + 1}`
+	);
+	const oldLines = [...unchangedPrefix, "old value", "after value"];
+	const newLines = [...unchangedPrefix, "new value", "after value"];
+	const patch = `diff --git a/file.txt b/file.txt
+index 1111111..2222222 100644
+--- a/file.txt
++++ b/file.txt
+@@ -20,4 +20,4 @@
+ context line 20
+ context line 21
+-old value
++new value
+ after value
+`;
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff
+			diffFileSnapshots={[
+				{
+					status: "available",
+					oldFile: { name: "file.txt", contents: `${oldLines.join("\n")}\n` },
+					newFile: { name: "file.txt", contents: `${newLines.join("\n")}\n` },
+				},
+			]}
+			patch={patch}
+		/>
+	);
+	const fileContainer = container.querySelector("diffs-container");
+	await flushInteractiveRender();
+	const shadowRoot = fileContainer?.shadowRoot;
+	const collapsedLabel = shadowRoot?.querySelector<HTMLElement>(
+		"[data-unmodified-lines]"
+	);
+
+	expect(collapsedLabel?.textContent).toBe("19 unmodified lines");
+	expect(shadowRoot?.textContent).not.toContain("context line 1");
+
+	act(() => {
+		collapsedLabel?.click();
+	});
+	await flushInteractiveRender();
+
+	expect(shadowRoot?.textContent).toContain("context line 1");
+
+	act(() => {
+		root.unmount();
+	});
 });
 
 test("keeps viewed and collapsed file state independent in the Local Review UI", () => {
