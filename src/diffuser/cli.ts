@@ -2,10 +2,10 @@
 import { spawn } from "bun";
 import { Cause, Effect, Exit, Option } from "effect";
 
+import { launchDiffReviewSession } from "./runtime";
 import { serveReviewSession } from "./server";
 import {
 	bunGitAdapter,
-	createDiffReviewSession,
 	diffuserHelp,
 	EmptyPatchError,
 	GitError,
@@ -54,11 +54,14 @@ if (parsed.kind !== "diff") {
 }
 
 const exit = await Effect.runPromiseExit(
-	createDiffReviewSession({
+	launchDiffReviewSession({
 		argv,
 		cwd: process.cwd(),
 		now: () => new Date(),
 		git: bunGitAdapter,
+		serve: (session) => serveReviewSession({ session }),
+		openBrowser,
+		printLine: (line) => console.log(line),
 	})
 );
 
@@ -74,15 +77,6 @@ if (Exit.isFailure(exit)) {
 	}
 
 	process.exit(1);
-}
-
-const server = serveReviewSession({ session: exit.value });
-const url = server.url.toString();
-
-console.log(`Review Session: ${url}`);
-
-if (parsed.openBrowser) {
-	openBrowser(url);
 }
 
 process.stdin.resume();
