@@ -52,6 +52,10 @@ _Avoid_: Browser automation tests
 The unified diff content captured for review.
 _Avoid_: Raw terminal output
 
+**Diff File Snapshot**:
+The old and new text content for one file in the captured **Patch**, captured at launch time to support expandable unchanged context.
+_Avoid_: Live file read, persisted blob store, renderer cache
+
 **Review Context**:
 Metadata that identifies what Git change was captured for review.
 _Avoid_: UI state, renderer state
@@ -84,6 +88,12 @@ _Avoid_: Custom visual system, bespoke performance layer
 
 - A **Review Session** captures one Git command result at launch time.
 - A **Review Session** contains exactly one non-empty **Patch**.
+- A **Review Session** may include **Diff File Snapshots** for files in the **Patch** when the **Local Review UI** needs expandable unchanged context.
+- The **Patch** remains a single captured artifact even when **Diff File Snapshots** are present.
+- **Diff File Snapshots** align to file entries in the **Patch** rather than path names alone.
+- A **Diff File Snapshot** contains text content only.
+- Missing **Diff File Snapshots** do not invalidate a **Review Session**; the **Patch** remains reviewable without expandable unchanged context for those files.
+- The **Local Review UI** still shows collapsed unchanged-line labels when **Diff File Snapshots** are missing, even though those labels cannot expand hidden context.
 - A **Review Session** contains **Review Context** such as the command, arguments, repository, and capture time.
 - **Review Context** includes the **Repository Context** for the captured Git command.
 - A **Review Session** does not contain comments, approvals, notes, or saved review state in v1.
@@ -101,8 +111,10 @@ _Avoid_: Custom visual system, bespoke performance layer
 - A **One-shot Server** serves exactly one **Review Session**.
 - A **One-shot Server** exposes its **Review Session** through a **Session Endpoint**.
 - `diffuser diff` uses **Git-shaped Arguments** to choose which changes the **Review Session** captures.
+- `diffuser diff` may include **Diff File Snapshots** for files where Git can provide both text sides of the captured change.
 - `diffuser show` creates a **Commit Review**, defaulting to `HEAD` when no commit-ish is provided, and uses controlled Git output for patch plus metadata.
 - `diffuser show` may use Git pathspecs to create a path-filtered **Commit Review** when that remains low complexity.
+- A **Commit Review** may include **Diff File Snapshots** for files where Git can provide both text sides of the commit change.
 - The **Diffuser Command** is available as an installed CLI binary in v1.
 - The v1 **Diffuser Command** uses **Source-based Distribution**.
 
