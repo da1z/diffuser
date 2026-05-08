@@ -2,6 +2,10 @@
 
 Review the code changes on branch `{{BRANCH}}` and improve code clarity, consistency, and maintainability while preserving exact functionality.
 
+# ROADBLOCKS
+
+If an environment/setup problem, broken tool, missing permission, or other roadblock prevents you from doing the work that should be possible, create a GitHub issue for the repository using the `gh` CLI and add the `ready-for-human` label. Include what you tried, what failed, and what human setup or decision is needed. This is for blockers outside the task itself, not normal implementation work you can fix.
+
 # CONTEXT
 
 ## Branch diff
@@ -47,7 +51,7 @@ Review the code changes on branch `{{BRANCH}}` and improve code clarity, consist
 If you find improvements to make:
 
 1. Make the changes directly on this branch
-2. Run `bun run typecheck`, `bun test`, and `bun run check` to ensure nothing is broken
+2. Run tests and type checking to ensure nothing is broken
 3. Commit describing the refinements
 
 If the code is already clean and well-structured, do nothing.
