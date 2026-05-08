@@ -9,12 +9,12 @@ import {
 	reviewSessionShutdownEndpoint,
 } from "./diffuser/protocol";
 import type { ReviewSession } from "./diffuser/workflow";
+import { LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD } from "./file-review-state";
 import {
 	App,
 	ContinuousPatchDiff,
 	continuousDiffViewOptions,
 	type FileDiffRendererProps,
-	LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD,
 	loadReviewSession,
 } from "./review-app";
 

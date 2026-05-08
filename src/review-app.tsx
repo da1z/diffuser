@@ -18,6 +18,14 @@ import {
 } from "./diffuser/protocol";
 import type { DiffFileSnapshot, ReviewSession } from "./diffuser/workflow";
 import {
+	type FileReviewStates,
+	fileDiffKey,
+	getFileReviewState,
+	initialFileReviewStatesFor,
+	markFileViewed,
+	toggleFileCollapsed,
+} from "./file-review-state";
+import {
 	clearSubmittedDraftReviewComments,
 	type DraftReviewCommentAnchor,
 	type DraftReviewCommentState,
@@ -49,11 +57,6 @@ interface DraftReviewCommentAnnotation {
 }
 type DraftReviewCommentLineAnnotation =
 	DiffLineAnnotation<DraftReviewCommentAnnotation>;
-interface FileReviewState {
-	readonly collapsed: boolean;
-	readonly viewed: boolean;
-}
-type FileReviewStates = Record<string, FileReviewState | undefined>;
 export type FileDiffRendererProps = Pick<
 	FileDiffProps<DraftReviewCommentAnnotation>,
 	| "fileDiff"
@@ -69,34 +72,12 @@ export const continuousDiffViewOptions = {
 	diffStyle: "split",
 	hunkSeparators: "line-info-basic",
 } as const satisfies FileDiffOptions<undefined>;
-export const LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD = 200;
-const initialFileReviewState: FileReviewState = {
-	viewed: false,
-	collapsed: false,
-};
+
 const emptyDiffFileSnapshots: readonly DiffFileSnapshot[] = [];
 const copyReviewErrorMessage = "Could not copy review.";
 
-const fileDiffKey = (fileDiff: ParsedFileDiff, index: number) =>
-	[
-		index,
-		fileDiff.prevName,
-		fileDiff.name,
-		fileDiff.type,
-		...fileDiff.hunks.map((hunk) => hunk.hunkSpecs),
-	].join("\0");
-
 const fileReviewLabel = (fileDiff: ParsedFileDiff) =>
 	fileDiff.name ?? fileDiff.prevName ?? "file";
-
-const getFileReviewState = (states: FileReviewStates, key: string) =>
-	states[key] ?? initialFileReviewState;
-
-const renderedSplitHunkRowCount = (fileDiff: ParsedFileDiff) =>
-	fileDiff.hunks.reduce((rowCount, hunk) => rowCount + hunk.splitLineCount, 0);
-
-const shouldDefaultCollapseFileDiff = (fileDiff: ParsedFileDiff) =>
-	renderedSplitHunkRowCount(fileDiff) > LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD;
 
 const draftReviewCommentSideLabel = (anchor: DraftReviewCommentAnchor) =>
 	anchor.side === "old-deleted" ? "old/deleted" : "new";
@@ -138,21 +119,6 @@ const draftReviewCommentBodyFromForm = (
 const isDraftReviewCommentSubmitShortcut = (
 	event: Pick<KeyboardEvent, "key" | "metaKey">
 ) => event.key === "Enter" && event.metaKey;
-
-const initialFileReviewStateFor = (
-	fileDiff: ParsedFileDiff
-): FileReviewState => ({
-	viewed: false,
-	collapsed: shouldDefaultCollapseFileDiff(fileDiff),
-});
-
-const initialFileReviewStatesFor = (fileDiffs: readonly ParsedFileDiff[]) =>
-	Object.fromEntries(
-		fileDiffs.map((fileDiff, index) => [
-			fileDiffKey(fileDiff, index),
-			initialFileReviewStateFor(fileDiff),
-		])
-	) satisfies FileReviewStates;
 
 const splitPatchIntoFileEntries = (patch: string) => {
 	const matches = Array.from(patch.matchAll(/^diff --git .+$/gm));
@@ -547,26 +513,19 @@ export const ContinuousPatchDiff = ({
 	const commentCountsByFileKey = draftReviewCommentCountByFileKey(
 		draftReviewCommentState
 	);
-	const updateFileReviewState = (
-		key: string,
-		update: (current: FileReviewState) => FileReviewState
+	const markViewed = (
+		fileDiff: ParsedFileDiff,
+		index: number,
+		viewed: boolean
 	) => {
-		setFileReviewStates((states) => ({
-			...states,
-			[key]: update(getFileReviewState(states, key)),
-		}));
+		setFileReviewStates((states) =>
+			markFileViewed(states, fileDiff, index, viewed)
+		);
 	};
-	const markViewed = (key: string, viewed: boolean) => {
-		updateFileReviewState(key, (current) => ({
-			viewed,
-			collapsed: viewed ? true : current.collapsed,
-		}));
-	};
-	const toggleCollapsed = (key: string) => {
-		updateFileReviewState(key, (current) => ({
-			...current,
-			collapsed: !current.collapsed,
-		}));
+	const toggleCollapsed = (fileDiff: ParsedFileDiff, index: number) => {
+		setFileReviewStates((states) =>
+			toggleFileCollapsed(states, fileDiff, index)
+		);
 	};
 	const cancelDraftReviewCommentForm = () => {
 		setActiveDraftReviewCommentAnchor(undefined);
@@ -652,7 +611,11 @@ export const ContinuousPatchDiff = ({
 		<>
 			{fileDiffs.map((fileDiff, index) => {
 				const key = fileDiffKey(fileDiff, index);
-				const fileReviewState = getFileReviewState(fileReviewStates, key);
+				const fileReviewState = getFileReviewState(
+					fileReviewStates,
+					fileDiff,
+					index
+				);
 				const label = fileReviewLabel(fileDiff);
 				const fileCommentCount = commentCountsByFileKey[key] ?? 0;
 
@@ -697,7 +660,7 @@ export const ContinuousPatchDiff = ({
 								commentCount={fileCommentCount}
 								label={label}
 								onViewedChange={(viewed) => {
-									markViewed(key, viewed);
+									markViewed(fileDiff, index, viewed);
 								}}
 								viewed={fileReviewState.viewed}
 							/>
@@ -707,7 +670,7 @@ export const ContinuousPatchDiff = ({
 								collapsed={fileReviewState.collapsed}
 								label={label}
 								onToggle={() => {
-									toggleCollapsed(key);
+									toggleCollapsed(fileDiff, index);
 								}}
 							/>
 						)}
