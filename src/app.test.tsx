@@ -284,6 +284,73 @@ index 1111111..2222222 100644
 	});
 });
 
+test("expands collapsed unchanged hunk labels between changed regions", async () => {
+	const unchangedMiddle = Array.from(
+		{ length: 17 },
+		(_, index) => `middle context line ${index + 1}`
+	);
+	const oldLines = [
+		"first old",
+		"shared prefix",
+		...unchangedMiddle,
+		"shared suffix",
+		"second old",
+	];
+	const newLines = [
+		"first new",
+		"shared prefix",
+		...unchangedMiddle,
+		"shared suffix",
+		"second new",
+	];
+	const patch = `diff --git a/file.txt b/file.txt
+index 1111111..2222222 100644
+--- a/file.txt
++++ b/file.txt
+@@ -1,2 +1,2 @@
+-first old
++first new
+ shared prefix
+@@ -19,3 +19,3 @@
+ middle context line 17
+ shared suffix
+-second old
++second new
+`;
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff
+			diffFileSnapshots={[
+				{
+					status: "available",
+					oldFile: { name: "file.txt", contents: `${oldLines.join("\n")}\n` },
+					newFile: { name: "file.txt", contents: `${newLines.join("\n")}\n` },
+				},
+			]}
+			patch={patch}
+		/>
+	);
+	const fileContainer = container.querySelector("diffs-container");
+	await flushInteractiveRender();
+	const shadowRoot = fileContainer?.shadowRoot;
+	const collapsedLabel = Array.from(
+		shadowRoot?.querySelectorAll<HTMLElement>("[data-unmodified-lines]") ?? []
+	).find((label) => label.textContent === "16 unmodified lines");
+
+	expect(collapsedLabel?.textContent).toBe("16 unmodified lines");
+	expect(shadowRoot?.textContent).not.toContain("middle context line 5");
+
+	act(() => {
+		collapsedLabel?.click();
+	});
+	await flushInteractiveRender();
+
+	expect(shadowRoot?.textContent).toContain("middle context line 5");
+
+	act(() => {
+		root.unmount();
+	});
+});
+
 test("keeps viewed and collapsed file state independent in the Local Review UI", () => {
 	const { container, root } = renderInteractive(
 		<ContinuousPatchDiff DiffRenderer={FileDiffProbe} patch={multiFilePatch} />
