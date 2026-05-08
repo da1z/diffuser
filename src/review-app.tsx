@@ -97,6 +97,17 @@ const renderedSplitHunkRowCount = (fileDiff: ParsedFileDiff) =>
 const shouldDefaultCollapseFileDiff = (fileDiff: ParsedFileDiff) =>
 	renderedSplitHunkRowCount(fileDiff) > LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD;
 
+const draftReviewCommentSideLabel = (anchor: DraftReviewCommentAnchor) =>
+	anchor.side === "old-deleted" ? "old/deleted" : "new";
+
+const draftReviewCommentLineLabel = (anchor: DraftReviewCommentAnchor) =>
+	anchor.startLine === anchor.endLine
+		? String(anchor.startLine)
+		: `${anchor.startLine}-${anchor.endLine}`;
+
+const draftReviewCommentLocation = (anchor: DraftReviewCommentAnchor) =>
+	`${anchor.path}:${draftReviewCommentLineLabel(anchor)} [${draftReviewCommentSideLabel(anchor)}]`;
+
 const initialFileReviewStateFor = (
 	fileDiff: ParsedFileDiff
 ): FileReviewState => ({
@@ -308,9 +319,11 @@ const FileDraftReviewCommentCount = ({ count }: { readonly count: number }) =>
 	) : undefined;
 
 const DraftReviewCommentForm = ({
+	anchor,
 	onCancel,
 	onSubmit,
 }: {
+	readonly anchor: DraftReviewCommentAnchor;
 	readonly onCancel: () => void;
 	readonly onSubmit: (body: string) => void;
 }) => (
@@ -324,6 +337,9 @@ const DraftReviewCommentForm = ({
 			);
 		}}
 	>
+		<p className="draft-review-comment-location">
+			{draftReviewCommentLocation(anchor)}
+		</p>
 		<textarea
 			aria-label="Draft review comment"
 			name="body"
@@ -333,7 +349,11 @@ const DraftReviewCommentForm = ({
 			<button aria-label="Submit draft review comment" type="submit">
 				Comment
 			</button>
-			<button onClick={onCancel} type="button">
+			<button
+				aria-label="Cancel draft review comment"
+				onClick={onCancel}
+				type="button"
+			>
 				Cancel
 			</button>
 		</div>
@@ -347,10 +367,13 @@ const SubmittedDraftReviewCommentView = ({
 	readonly comment: SubmittedDraftReviewComment;
 	readonly onDelete: (commentId: string) => void;
 }) => (
-	<div className="draft-review-comment">
+	<article className="draft-review-comment" data-draft-comment="">
+		<div className="draft-review-comment-location">
+			{draftReviewCommentLocation(comment.anchor)}
+		</div>
 		<p>{comment.body}</p>
 		<button
-			aria-label="Delete draft review comment"
+			aria-label="Discard draft review comment"
 			onClick={() => {
 				onDelete(comment.id);
 			}}
@@ -358,7 +381,7 @@ const SubmittedDraftReviewCommentView = ({
 		>
 			Delete
 		</button>
-	</div>
+	</article>
 );
 
 const ReviewCommentToolbar = ({
@@ -520,8 +543,13 @@ export const ContinuousPatchDiff = ({
 		const metadata = annotation.metadata;
 
 		if (metadata.kind === "form") {
+			if (metadata.anchor === undefined) {
+				return;
+			}
+
 			return (
 				<DraftReviewCommentForm
+					anchor={metadata.anchor}
 					onCancel={cancelDraftReviewCommentForm}
 					onSubmit={submitActiveDraftReviewComment}
 				/>

@@ -46,6 +46,20 @@ diff --git a/a.txt b/a.txt
 +new
 `;
 
+const draftCommentPatch = `diff --git a/old-name.txt b/new-name.txt
+similarity index 88%
+rename from old-name.txt
+rename to new-name.txt
+--- a/old-name.txt
++++ b/new-name.txt
+@@ -1,3 +1,4 @@
+ shared before
+-old line
++new line
+ unchanged after
++added tail
+`;
+
 const patchWithRenderedContextRows = (fileName: string, rows: number) => {
 	const lines = Array.from(
 		{ length: rows },
@@ -135,6 +149,13 @@ const viewedControlsFor = (container: Element, label: string) =>
 const viewedControlPressedState = (control: HTMLButtonElement | null) =>
 	control?.getAttribute("aria-pressed");
 
+interface DraftReviewSelectionRange {
+	readonly end: number;
+	readonly endSide?: "deletions" | "additions";
+	readonly side: "deletions" | "additions";
+	readonly start: number;
+}
+
 const FileDiffProbe = ({
 	fileDiff,
 	lineAnnotations,
@@ -169,20 +190,29 @@ const FileDiffProbe = ({
 					>
 						Select added line
 					</button>
-					{lineAnnotations?.map((annotation) => (
-						<div
-							data-annotation-line={annotation.lineNumber}
-							data-annotation-side={annotation.side}
-							key={[
-								annotation.side,
-								annotation.lineNumber,
-								annotation.metadata?.kind ?? "unknown",
-								annotation.metadata?.comment?.id ?? "active",
-							].join(":")}
-						>
-							{renderAnnotation?.(annotation)}
-						</div>
-					))}
+					{lineAnnotations?.map((annotation) => {
+						const anchor =
+							annotation.metadata?.anchor ??
+							annotation.metadata?.comment?.anchor;
+
+						return (
+							<div
+								data-anchor-line={anchor?.startLine}
+								data-anchor-path={anchor?.path}
+								data-anchor-side={anchor?.side}
+								data-annotation-line={annotation.lineNumber}
+								data-annotation-side={annotation.side}
+								key={[
+									annotation.side,
+									annotation.lineNumber,
+									annotation.metadata?.kind ?? "unknown",
+									annotation.metadata?.comment?.id ?? "active",
+								].join(":")}
+							>
+								{renderAnnotation?.(annotation)}
+							</div>
+						);
+					})}
 				</>
 			)}
 		</article>
@@ -216,6 +246,83 @@ const submitDraftReviewComment = (container: Element, body: string) => {
 				new window.Event("submit", { bubbles: true, cancelable: true })
 			);
 	});
+};
+
+const renderDraftReviewCommentProbe = () => {
+	let currentFileDiff: FileDiffRendererProps | undefined;
+	const CapturingFileDiffProbe = (props: FileDiffRendererProps) => {
+		currentFileDiff = props;
+
+		return <FileDiffProbe {...props} />;
+	};
+	const rendered = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={CapturingFileDiffProbe}
+			patch={draftCommentPatch}
+		/>
+	);
+	const draftTextarea = () =>
+		rendered.container.querySelector<HTMLTextAreaElement>(
+			'textarea[aria-label="Draft review comment"]'
+		);
+	const selectLines = (range: DraftReviewSelectionRange) => {
+		act(() => {
+			currentFileDiff?.options?.onLineSelected?.(range);
+		});
+	};
+	const submitDraft = (comment: string) => {
+		const textarea = draftTextarea();
+		const submit = rendered.container.querySelector<HTMLButtonElement>(
+			'button[aria-label="Submit draft review comment"]'
+		);
+
+		if (textarea === null || submit === null) {
+			throw new Error("Expected an open Draft Review Comment form.");
+		}
+
+		textarea.value = comment;
+		textarea.dispatchEvent(new window.InputEvent("input", { bubbles: true }));
+		act(() => {
+			submit.click();
+		});
+	};
+	const cancelDraft = () => {
+		act(() => {
+			rendered.container
+				.querySelector<HTMLButtonElement>(
+					'button[aria-label="Cancel draft review comment"]'
+				)
+				?.click();
+		});
+	};
+	const discardDraft = (comment: string) => {
+		const discardButton = Array.from(
+			rendered.container.querySelectorAll<HTMLButtonElement>(
+				'button[aria-label="Discard draft review comment"]'
+			)
+		).find((button) =>
+			button.closest(".draft-review-comment")?.textContent?.includes(comment)
+		);
+
+		act(() => {
+			discardButton?.click();
+		});
+	};
+	const commentTexts = () =>
+		Array.from(
+			rendered.container.querySelectorAll(".draft-review-comment")
+		).map((comment) => comment.textContent ?? "");
+
+	return {
+		...rendered,
+		cancelDraft,
+		commentTexts,
+		currentFileDiff: () => currentFileDiff,
+		discardDraft,
+		draftTextarea,
+		selectLines,
+		submitDraft,
+	};
 };
 
 test("loads the Review Session from the Session Endpoint", async () => {
@@ -600,6 +707,82 @@ Please simplify this branch.`,
 	});
 });
 
+test("supports side-aware inline Draft Review Comments in the Local Review UI", () => {
+	const {
+		cancelDraft,
+		commentTexts,
+		container,
+		currentFileDiff,
+		discardDraft,
+		draftTextarea,
+		root,
+		selectLines,
+		submitDraft,
+	} = renderDraftReviewCommentProbe();
+
+	expect(currentFileDiff()?.options?.enableLineSelection).toBe(true);
+
+	selectLines({ start: 2, end: 2, side: "additions" });
+	expect(draftTextarea()).not.toBeNull();
+	cancelDraft();
+	expect(container.querySelector(".draft-review-comment")).toBeNull();
+	expect(currentFileDiff()?.selectedLines).toBeNull();
+
+	selectLines({ start: 2, end: 2, side: "additions" });
+	submitDraft("   ");
+	expect(container.querySelector(".draft-review-comment")).toBeNull();
+
+	selectLines({ start: 4, end: 2, side: "additions" });
+	submitDraft("Please check the new flow.");
+	selectLines({ start: 4, end: 2, side: "additions" });
+	submitDraft("A second note for the same range.");
+	expect(commentTexts()).toHaveLength(2);
+	expect(commentTexts()[0]).toContain("new-name.txt:2-4 [new]");
+	expect(commentTexts()[0]).toContain("Please check the new flow.");
+	expect(commentTexts()[1]).toContain("new-name.txt:2-4 [new]");
+	expect(commentTexts()[1]).toContain("A second note for the same range.");
+	expect(
+		Array.from(container.querySelectorAll("[data-anchor-path]")).map(
+			(annotation) => [
+				annotation.getAttribute("data-anchor-path"),
+				annotation.getAttribute("data-anchor-side"),
+				annotation.getAttribute("data-anchor-line"),
+				annotation.getAttribute("data-annotation-side"),
+				annotation.getAttribute("data-annotation-line"),
+			]
+		)
+	).toEqual([
+		["new-name.txt", "new", "2", "additions", "4"],
+		["new-name.txt", "new", "2", "additions", "4"],
+	]);
+
+	discardDraft("Please check the new flow.");
+	expect(commentTexts()).toHaveLength(1);
+	expect(commentTexts()[0]).toContain("new-name.txt:2-4 [new]");
+	expect(commentTexts()[0]).toContain("A second note for the same range.");
+
+	selectLines({ start: 2, end: 2, side: "deletions" });
+	submitDraft("Deleted line concern.");
+	selectLines({ start: 3, end: 3, side: "deletions" });
+	submitDraft("Context should anchor to the new side.");
+	expect(commentTexts()).toHaveLength(3);
+	expect(commentTexts()[0]).toContain("new-name.txt:2-4 [new]");
+	expect(commentTexts()[0]).toContain("A second note for the same range.");
+	expect(commentTexts()[1]).toContain("old-name.txt:2 [old/deleted]");
+	expect(commentTexts()[1]).toContain("Deleted line concern.");
+	expect(commentTexts()[2]).toContain("new-name.txt:3 [new]");
+	expect(commentTexts()[2]).toContain("Context should anchor to the new side.");
+
+	selectLines({ start: 2, end: 2, side: "deletions", endSide: "additions" });
+	expect(
+		container.querySelector('textarea[aria-label="Draft review comment"]')
+	).toBeNull();
+
+	act(() => {
+		root.unmount();
+	});
+});
+
 test("keeps Draft Review Comments when copying fails", async () => {
 	const { container, root } = renderInteractive(
 		<ContinuousPatchDiff DiffRenderer={FileDiffProbe} patch={multiFilePatch} />
@@ -622,6 +805,22 @@ test("keeps Draft Review Comments when copying fails", async () => {
 
 	expect(container.textContent).toContain("Do not lose this.");
 	expect(container.textContent).toContain("Could not copy review.");
+
+	act(() => {
+		root.unmount();
+	});
+});
+
+test("rejects Draft Review Comment ranges that normalize across anchor sides", () => {
+	const { currentFileDiff, draftTextarea, root, selectLines } =
+		renderDraftReviewCommentProbe();
+
+	selectLines({ start: 2, end: 2, side: "additions" });
+	expect(draftTextarea()).not.toBeNull();
+
+	selectLines({ start: 2, end: 3, side: "deletions" });
+	expect(draftTextarea()).toBeNull();
+	expect(currentFileDiff()?.selectedLines).toBeNull();
 
 	act(() => {
 		root.unmount();
