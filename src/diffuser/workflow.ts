@@ -132,17 +132,31 @@ export const parseDiffuserCommand = (
 const formatDiffCommand = (args: readonly string[]) =>
 	["diffuser", "diff", ...args].join(" ");
 
+const formatShowArgs = (
+	commitish: string,
+	pathspec: readonly string[]
+): readonly string[] => [
+	commitish,
+	...(pathspec.length > 0 ? ["--"] : []),
+	...pathspec,
+];
+
 const formatShowCommand = (
 	commitish: string,
 	pathspec: readonly string[]
 ): string =>
-	[
-		"diffuser",
-		"show",
-		commitish,
-		...(pathspec.length > 0 ? ["--"] : []),
-		...pathspec,
-	].join(" ");
+	["diffuser", "show", ...formatShowArgs(commitish, pathspec)].join(" ");
+
+const requireNonEmptyPatch = (
+	patch: string
+): Effect.Effect<string, EmptyPatchError> =>
+	patch.trim().length === 0
+		? Effect.fail(
+				new EmptyPatchError({
+					message: "Git produced an empty Patch.",
+				})
+			)
+		: Effect.succeed(patch);
 
 const runGit = (
 	cwd: string,
@@ -172,6 +186,38 @@ const runGit = (
 					}),
 	});
 
+const parseCommitMetadata = (
+	stdout: string
+): Effect.Effect<CommitMetadata, GitError> => {
+	const [oid, shortOid, authorName, authorEmail, authoredAt, subject] = stdout
+		.trimEnd()
+		.split("\0");
+
+	if (
+		oid === undefined ||
+		shortOid === undefined ||
+		authorName === undefined ||
+		authorEmail === undefined ||
+		authoredAt === undefined ||
+		subject === undefined
+	) {
+		return Effect.fail(
+			new GitError({
+				message: "git show produced incomplete commit metadata",
+			})
+		);
+	}
+
+	return Effect.succeed({
+		oid,
+		shortOid,
+		authorName,
+		authorEmail,
+		authoredAt,
+		subject,
+	});
+};
+
 export const bunGitAdapter: GitAdapter = {
 	diff: ({ args, cwd }) => runGit(cwd, ["diff", ...args]),
 	showCommit: ({ commitish, pathspec, cwd }) =>
@@ -189,31 +235,10 @@ export const bunGitAdapter: GitAdapter = {
 				commitish,
 				...(pathspec.length > 0 ? ["--", ...pathspec] : []),
 			]);
-			const [oid, shortOid, authorName, authorEmail, authoredAt, subject] =
-				metadataResult.stdout.trimEnd().split("\0");
-
-			if (
-				oid === undefined ||
-				shortOid === undefined ||
-				authorName === undefined ||
-				authorEmail === undefined ||
-				authoredAt === undefined ||
-				subject === undefined
-			) {
-				return yield* new GitError({
-					message: "git show produced incomplete commit metadata",
-				});
-			}
+			const metadata = yield* parseCommitMetadata(metadataResult.stdout);
 
 			return {
-				metadata: {
-					oid,
-					shortOid,
-					authorName,
-					authorEmail,
-					authoredAt,
-					subject,
-				},
+				metadata,
 				patch: patchResult.stdout,
 			};
 		}),
@@ -236,13 +261,7 @@ const createDiffSessionFromCommand = ({
 }): Effect.Effect<ReviewSession, GitError | EmptyPatchError> =>
 	Effect.gen(function* () {
 		const result = yield* git.diff({ args: command.gitArgs, cwd });
-		const patch = result.stdout;
-
-		if (patch.trim().length === 0) {
-			return yield* new EmptyPatchError({
-				message: "Git produced an empty Patch.",
-			});
-		}
+		const patch = yield* requireNonEmptyPatch(result.stdout);
 
 		const repositoryRoot = yield* git.repositoryRoot({ cwd });
 		const capturedAt = now().toISOString();
@@ -308,21 +327,11 @@ const createShowSessionFromCommand = ({
 					: new ParseError({ message: "Invalid diffuser show arguments." }),
 		});
 		const result = yield* git.showCommit({ commitish, pathspec, cwd });
-		const patch = result.patch;
-
-		if (patch.trim().length === 0) {
-			return yield* new EmptyPatchError({
-				message: "Git produced an empty Patch.",
-			});
-		}
+		const patch = yield* requireNonEmptyPatch(result.patch);
 
 		const repositoryRoot = yield* git.repositoryRoot({ cwd });
 		const capturedAt = now().toISOString();
-		const args = [
-			commitish,
-			...(pathspec.length > 0 ? ["--"] : []),
-			...pathspec,
-		];
+		const args = formatShowArgs(commitish, pathspec);
 
 		return {
 			id: `show-${capturedAt}`,
