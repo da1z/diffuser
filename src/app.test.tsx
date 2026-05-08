@@ -92,6 +92,7 @@ const renderInteractive = (children: ReactNode) => {
 		document: window.document,
 		HTMLElement: window.HTMLElement,
 		HTMLInputElement: window.HTMLInputElement,
+		InputEvent: window.InputEvent,
 		SVGElement: window.SVGElement,
 		Event: window.Event,
 		MouseEvent: window.MouseEvent,
@@ -136,7 +137,9 @@ const viewedControlPressedState = (control: HTMLButtonElement | null) =>
 
 const FileDiffProbe = ({
 	fileDiff,
+	lineAnnotations,
 	options,
+	renderAnnotation,
 	renderHeaderPrefix,
 	renderHeaderMetadata,
 }: FileDiffRendererProps) => {
@@ -150,7 +153,33 @@ const FileDiffProbe = ({
 				<span>{fileName}</span>
 				{renderHeaderMetadata?.(fileDiff)}
 			</header>
-			{collapsed ? undefined : <p>{fileName} body</p>}
+			{collapsed ? undefined : (
+				<>
+					<p>{fileName} body</p>
+					<button
+						aria-label="Select added line"
+						onClick={() => {
+							options?.onLineSelected?.({
+								end: 1,
+								side: "additions",
+								start: 1,
+							});
+						}}
+						type="button"
+					>
+						Select added line
+					</button>
+					{lineAnnotations?.map((annotation) => (
+						<div
+							data-annotation-line={annotation.lineNumber}
+							data-annotation-side={annotation.side}
+							key={`${annotation.side}:${annotation.lineNumber}:${annotation.metadata?.kind ?? "unknown"}`}
+						>
+							{renderAnnotation?.(annotation)}
+						</div>
+					))}
+				</>
+			)}
 		</article>
 	);
 };
@@ -486,6 +515,128 @@ test("keeps repeated file entries independent in the Local Review UI", () => {
 		"true",
 		"false",
 	]);
+
+	act(() => {
+		root.unmount();
+	});
+});
+
+test("submits and copies Draft Review Comments from the Local Review UI", async () => {
+	const clipboardWrites: string[] = [];
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff DiffRenderer={FileDiffProbe} patch={multiFilePatch} />
+	);
+	Object.defineProperty(window.navigator, "clipboard", {
+		configurable: true,
+		value: {
+			writeText: (text: string) => {
+				clipboardWrites.push(text);
+
+				return Promise.resolve();
+			},
+		},
+	});
+
+	act(() => {
+		container
+			.querySelector<HTMLButtonElement>(
+				'button[aria-label="Select added line"]'
+			)
+			?.click();
+	});
+
+	const textarea = container.querySelector<HTMLTextAreaElement>(
+		'textarea[aria-label="Draft review comment"]'
+	);
+	expect(textarea).not.toBeNull();
+	if (textarea === null) {
+		throw new Error("Draft review comment textarea was not rendered.");
+	}
+
+	act(() => {
+		textarea.value = "Please simplify this branch.";
+		textarea.dispatchEvent(new window.InputEvent("input", { bubbles: true }));
+	});
+	act(() => {
+		textarea
+			?.closest("form")
+			?.dispatchEvent(
+				new window.Event("submit", { bubbles: true, cancelable: true })
+			);
+	});
+
+	expect(container.textContent).toContain("Please simplify this branch.");
+	expect(container.textContent).toContain("1 draft comment");
+	expect(container.textContent).toContain("1 comment");
+	expect(
+		container.querySelector<HTMLElement>("[data-annotation-side]")?.dataset
+			.annotationSide
+	).toBe("additions");
+
+	await act(async () => {
+		container
+			.querySelector<HTMLButtonElement>('button[aria-label="Copy review"]')
+			?.click();
+		await Promise.resolve();
+	});
+
+	expect(clipboardWrites).toEqual([
+		`a.txt:1 [new]
+Please simplify this branch.`,
+	]);
+	expect(container.textContent).not.toContain("Please simplify this branch.");
+	expect(container.textContent).not.toContain("Copy review");
+
+	act(() => {
+		root.unmount();
+	});
+});
+
+test("keeps Draft Review Comments when copying fails", async () => {
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff DiffRenderer={FileDiffProbe} patch={multiFilePatch} />
+	);
+	Object.defineProperty(window.navigator, "clipboard", {
+		configurable: true,
+		value: {
+			writeText: () => Promise.reject(new Error("Clipboard blocked.")),
+		},
+	});
+
+	act(() => {
+		container
+			.querySelector<HTMLButtonElement>(
+				'button[aria-label="Select added line"]'
+			)
+			?.click();
+	});
+	const textarea = container.querySelector<HTMLTextAreaElement>(
+		'textarea[aria-label="Draft review comment"]'
+	);
+	if (textarea === null) {
+		throw new Error("Draft review comment textarea was not rendered.");
+	}
+	act(() => {
+		textarea.value = "Do not lose this.";
+		textarea.dispatchEvent(new window.InputEvent("input", { bubbles: true }));
+	});
+	act(() => {
+		textarea
+			?.closest("form")
+			?.dispatchEvent(
+				new window.Event("submit", { bubbles: true, cancelable: true })
+			);
+	});
+
+	await act(async () => {
+		container
+			.querySelector<HTMLButtonElement>('button[aria-label="Copy review"]')
+			?.click();
+		await Promise.resolve();
+	});
+
+	expect(container.textContent).toContain("Do not lose this.");
+	expect(container.textContent).toContain("Could not copy review.");
 
 	act(() => {
 		root.unmount();

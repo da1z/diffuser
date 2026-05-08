@@ -1,7 +1,9 @@
 import {
+	type DiffLineAnnotation,
 	type FileDiffOptions,
 	parsePatchFiles,
 	processFile,
+	type SelectedLineRange,
 } from "@pierre/diffs";
 import {
 	FileDiff,
@@ -15,6 +17,18 @@ import {
 	reviewSessionShutdownEndpoint,
 } from "./diffuser/protocol";
 import type { DiffFileSnapshot, ReviewSession } from "./diffuser/workflow";
+import {
+	clearSubmittedDraftReviewComments,
+	type DraftReviewCommentAnchor,
+	type DraftReviewCommentState,
+	deleteSubmittedDraftReviewComment,
+	draftReviewCommentAnchorForSelection,
+	draftReviewCommentCountByFileKey,
+	emptyDraftReviewCommentState,
+	type SubmittedDraftReviewComment,
+	submitDraftReviewComment,
+} from "./review-comments";
+import { formatReviewSummary } from "./review-summary";
 import "./index.css";
 
 export interface AppProps {
@@ -28,14 +42,27 @@ type FetchReviewSession = (
 
 type ParsedFileDiff = FileDiffMetadata;
 type ReviewSessionContext = ReviewSession["context"];
+interface DraftReviewCommentAnnotation {
+	readonly anchor?: DraftReviewCommentAnchor;
+	readonly comment?: SubmittedDraftReviewComment;
+	readonly kind: "form" | "comment";
+}
+type DraftReviewCommentLineAnnotation =
+	DiffLineAnnotation<DraftReviewCommentAnnotation>;
 interface FileReviewState {
 	readonly collapsed: boolean;
 	readonly viewed: boolean;
 }
 type FileReviewStates = Record<string, FileReviewState | undefined>;
 export type FileDiffRendererProps = Pick<
-	FileDiffProps<undefined>,
-	"fileDiff" | "options" | "renderHeaderMetadata" | "renderHeaderPrefix"
+	FileDiffProps<DraftReviewCommentAnnotation>,
+	| "fileDiff"
+	| "lineAnnotations"
+	| "options"
+	| "renderAnnotation"
+	| "renderHeaderMetadata"
+	| "renderHeaderPrefix"
+	| "selectedLines"
 >;
 
 export const continuousDiffViewOptions = {
@@ -237,6 +264,131 @@ const ViewedFileControl = ({
 	</button>
 );
 
+const draftReviewCommentLineAnnotationForAnchor = (
+	anchor: DraftReviewCommentAnchor,
+	metadata: DraftReviewCommentAnnotation
+): DraftReviewCommentLineAnnotation => ({
+	lineNumber: anchor.endLine,
+	metadata,
+	side: anchor.side === "old-deleted" ? "deletions" : "additions",
+});
+
+const draftReviewCommentLineAnnotationsForFile = ({
+	activeAnchor,
+	fileKey,
+	submittedComments,
+}: {
+	readonly activeAnchor: DraftReviewCommentAnchor | undefined;
+	readonly fileKey: string;
+	readonly submittedComments: readonly SubmittedDraftReviewComment[];
+}): DraftReviewCommentLineAnnotation[] => [
+	...submittedComments
+		.filter((comment) => comment.anchor.fileKey === fileKey)
+		.map((comment) =>
+			draftReviewCommentLineAnnotationForAnchor(comment.anchor, {
+				comment,
+				kind: "comment",
+			})
+		),
+	...(activeAnchor?.fileKey === fileKey
+		? [
+				draftReviewCommentLineAnnotationForAnchor(activeAnchor, {
+					anchor: activeAnchor,
+					kind: "form",
+				}),
+			]
+		: []),
+];
+
+const FileDraftReviewCommentCount = ({ count }: { readonly count: number }) =>
+	count > 0 ? (
+		<span className="draft-review-comment-file-count">
+			{count} {count === 1 ? "comment" : "comments"}
+		</span>
+	) : undefined;
+
+const DraftReviewCommentForm = ({
+	body,
+	onCancel,
+	onSubmit,
+}: {
+	readonly body: string;
+	readonly onCancel: () => void;
+	readonly onSubmit: (body: string) => void;
+}) => (
+	<form
+		className="draft-review-comment-form"
+		onSubmit={(event) => {
+			event.preventDefault();
+			const textarea = event.currentTarget.elements.namedItem("body");
+			onSubmit(
+				textarea !== null && "value" in textarea ? String(textarea.value) : ""
+			);
+		}}
+	>
+		<textarea
+			aria-label="Draft review comment"
+			defaultValue={body}
+			name="body"
+			placeholder="Add a draft review comment..."
+		/>
+		<div className="draft-review-comment-actions">
+			<button aria-label="Submit draft review comment" type="submit">
+				Comment
+			</button>
+			<button onClick={onCancel} type="button">
+				Cancel
+			</button>
+		</div>
+	</form>
+);
+
+const SubmittedDraftReviewCommentView = ({
+	comment,
+	onDelete,
+}: {
+	readonly comment: SubmittedDraftReviewComment;
+	readonly onDelete: (commentId: string) => void;
+}) => (
+	<div className="draft-review-comment">
+		<p>{comment.body}</p>
+		<button
+			aria-label="Delete draft review comment"
+			onClick={() => {
+				onDelete(comment.id);
+			}}
+			type="button"
+		>
+			Delete
+		</button>
+	</div>
+);
+
+const ReviewCommentToolbar = ({
+	commentCount,
+	copyError,
+	onClear,
+	onCopy,
+}: {
+	readonly commentCount: number;
+	readonly copyError: string | undefined;
+	readonly onClear: () => void;
+	readonly onCopy: () => void;
+}) => (
+	<aside aria-label="Review Comment Toolbar" className="review-comment-toolbar">
+		<span>
+			{commentCount} draft {commentCount === 1 ? "comment" : "comments"}
+		</span>
+		<button aria-label="Copy review" onClick={onCopy} type="button">
+			Copy review
+		</button>
+		<button onClick={onClear} type="button">
+			Clear
+		</button>
+		{copyError === undefined ? undefined : <p>{copyError}</p>}
+	</aside>
+);
+
 export const loadReviewSession = async (
 	fetchSession: FetchReviewSession = fetch
 ): Promise<ReviewSession> => {
@@ -282,9 +434,29 @@ export const ContinuousPatchDiff = ({
 	const [fileReviewStates, setFileReviewStates] = useState<FileReviewStates>(
 		initialFileReviewStates
 	);
+	const [draftReviewCommentState, setDraftReviewCommentState] =
+		useState<DraftReviewCommentState>(emptyDraftReviewCommentState);
+	const [activeDraftReviewCommentAnchor, setActiveDraftReviewCommentAnchor] =
+		useState<DraftReviewCommentAnchor | undefined>();
+	const [
+		activeDraftReviewCommentSelection,
+		setActiveDraftReviewCommentSelection,
+	] = useState<SelectedLineRange | null>(null);
+	const [activeDraftReviewCommentBody, setActiveDraftReviewCommentBody] =
+		useState("");
+	const [copyError, setCopyError] = useState<string | undefined>();
 	useEffect(() => {
 		setFileReviewStates(initialFileReviewStates);
+		setDraftReviewCommentState(emptyDraftReviewCommentState());
+		setActiveDraftReviewCommentAnchor(undefined);
+		setActiveDraftReviewCommentSelection(null);
+		setActiveDraftReviewCommentBody("");
+		setCopyError(undefined);
 	}, [initialFileReviewStates]);
+	const submittedComments = draftReviewCommentState.submittedComments;
+	const commentCountsByFileKey = draftReviewCommentCountByFileKey(
+		draftReviewCommentState
+	);
 	const updateFileReviewState = (
 		key: string,
 		update: (current: FileReviewState) => FileReviewState
@@ -306,6 +478,75 @@ export const ContinuousPatchDiff = ({
 			collapsed: !current.collapsed,
 		}));
 	};
+	const cancelDraftReviewCommentForm = () => {
+		setActiveDraftReviewCommentAnchor(undefined);
+		setActiveDraftReviewCommentSelection(null);
+		setActiveDraftReviewCommentBody("");
+	};
+	const submitActiveDraftReviewComment = (body: string) => {
+		if (activeDraftReviewCommentAnchor === undefined) {
+			return;
+		}
+
+		setDraftReviewCommentState((state) =>
+			submitDraftReviewComment(state, {
+				anchor: activeDraftReviewCommentAnchor,
+				body,
+			})
+		);
+		cancelDraftReviewCommentForm();
+	};
+	const deleteDraftReviewComment = (commentId: string) => {
+		setDraftReviewCommentState((state) =>
+			deleteSubmittedDraftReviewComment(state, commentId)
+		);
+	};
+	const clearDraftReviewComments = () => {
+		setDraftReviewCommentState(clearSubmittedDraftReviewComments);
+		setCopyError(undefined);
+	};
+	const copyReview = () => {
+		navigator.clipboard
+			.writeText(formatReviewSummary(submittedComments))
+			.then(() => {
+				clearDraftReviewComments();
+			})
+			.catch(() => {
+				setCopyError("Could not copy review.");
+			});
+	};
+	const confirmClearDraftReviewComments = () => {
+		// biome-ignore lint/suspicious/noAlert: The PRD requires the browser confirmation dialog for clearing draft comments.
+		if (window.confirm("Clear all draft review comments?")) {
+			clearDraftReviewComments();
+		}
+	};
+	const renderDraftReviewCommentAnnotation = (
+		annotation: DraftReviewCommentLineAnnotation
+	) => {
+		const metadata = annotation.metadata;
+
+		if (metadata.kind === "form") {
+			return (
+				<DraftReviewCommentForm
+					body={activeDraftReviewCommentBody}
+					onCancel={cancelDraftReviewCommentForm}
+					onSubmit={submitActiveDraftReviewComment}
+				/>
+			);
+		}
+
+		if (metadata.comment === undefined) {
+			return;
+		}
+
+		return (
+			<SubmittedDraftReviewCommentView
+				comment={metadata.comment}
+				onDelete={deleteDraftReviewComment}
+			/>
+		);
+	};
 
 	return (
 		<>
@@ -313,23 +554,56 @@ export const ContinuousPatchDiff = ({
 				const key = fileDiffKey(fileDiff, index);
 				const fileReviewState = getFileReviewState(fileReviewStates, key);
 				const label = fileReviewLabel(fileDiff);
+				const fileCommentCount = commentCountsByFileKey[key] ?? 0;
 
 				return (
 					<DiffRenderer
 						fileDiff={fileDiff}
 						key={key}
+						lineAnnotations={draftReviewCommentLineAnnotationsForFile({
+							activeAnchor: activeDraftReviewCommentAnchor,
+							fileKey: key,
+							submittedComments,
+						})}
 						options={{
 							...continuousDiffViewOptions,
 							collapsed: fileReviewState.collapsed,
+							enableLineSelection: true,
+							onLineSelected: (selection) => {
+								if (selection === null) {
+									cancelDraftReviewCommentForm();
+									return;
+								}
+								const anchor = draftReviewCommentAnchorForSelection({
+									fileDiff,
+									fileKey: key,
+									fileOrder: index,
+									selection,
+								});
+
+								if (anchor === undefined) {
+									cancelDraftReviewCommentForm();
+									return;
+								}
+
+								setActiveDraftReviewCommentAnchor(anchor);
+								setActiveDraftReviewCommentSelection(selection);
+								setActiveDraftReviewCommentBody("");
+								setCopyError(undefined);
+							},
 						}}
+						renderAnnotation={renderDraftReviewCommentAnnotation}
 						renderHeaderMetadata={() => (
-							<ViewedFileControl
-								label={label}
-								onViewedChange={(viewed) => {
-									markViewed(key, viewed);
-								}}
-								viewed={fileReviewState.viewed}
-							/>
+							<>
+								<FileDraftReviewCommentCount count={fileCommentCount} />
+								<ViewedFileControl
+									label={label}
+									onViewedChange={(viewed) => {
+										markViewed(key, viewed);
+									}}
+									viewed={fileReviewState.viewed}
+								/>
+							</>
 						)}
 						renderHeaderPrefix={() => (
 							<FileCollapseToggle
@@ -340,9 +614,22 @@ export const ContinuousPatchDiff = ({
 								}}
 							/>
 						)}
+						selectedLines={
+							activeDraftReviewCommentAnchor?.fileKey === key
+								? activeDraftReviewCommentSelection
+								: null
+						}
 					/>
 				);
 			})}
+			{submittedComments.length > 0 ? (
+				<ReviewCommentToolbar
+					commentCount={submittedComments.length}
+					copyError={copyError}
+					onClear={confirmClearDraftReviewComments}
+					onCopy={copyReview}
+				/>
+			) : undefined}
 		</>
 	);
 };

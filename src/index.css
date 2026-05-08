@@ -56,3 +56,64 @@ body {
 .viewed-file-control {
 	font-weight: 600;
 }
+
+.draft-review-comment-file-count {
+	display: inline-flex;
+	align-items: center;
+	padding: 4px 8px;
+	margin-right: 8px;
+	font-size: 12px;
+	font-weight: 700;
+	color: #1e3a8a;
+	background: #dbeafe;
+	border-radius: 999px;
+}
+
+.draft-review-comment-form,
+.draft-review-comment {
+	padding: 12px;
+	margin: 8px 0;
+	color: #0f172a;
+	background: #eff6ff;
+	border: 1px solid #bfdbfe;
+	border-radius: 10px;
+}
+
+.draft-review-comment-form textarea {
+	box-sizing: border-box;
+	width: 100%;
+	min-height: 80px;
+	padding: 8px;
+	font: inherit;
+	resize: vertical;
+	background: white;
+	border: 1px solid #93c5fd;
+	border-radius: 8px;
+}
+
+.draft-review-comment-actions {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+	margin-top: 8px;
+}
+
+.review-comment-toolbar {
+	position: fixed;
+	right: 24px;
+	bottom: 24px;
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	padding: 12px;
+	font-size: 14px;
+	color: white;
+	background: #0f172a;
+	border-radius: 12px;
+	box-shadow: 0 12px 30px rgb(15 23 42 / 25%);
+}
+
+.review-comment-toolbar p {
+	margin: 0;
+	color: #fecaca;
+}
