@@ -19,6 +19,11 @@ The Effect v4 repository is cloned to `~/.local/share/effect-solutions/effect` f
 Use this to explore APIs, find usage examples, and understand implementation details when the documentation isn't enough.
 <!-- effect-solutions:end -->
 
+## Local Package Sources
+
+The Pierre source repository is cloned to `~/.local/share/pierre/pierre` for reference.
+Use this when working with `@pierre/diffs`, especially React git diff views, package APIs, styling, and debugging behavior that is clearer from source than from package types.
+
 Default to using Bun instead of Node.js.
 
 - Use `bun <file>` instead of `node <file>` or `ts-node <file>`
