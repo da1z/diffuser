@@ -16,7 +16,10 @@
     "typescript": "^6.0.3",
     "ultracite": "7.6.3"
   },
-  "name": "bun-react-template",
+  "name": "diffuser",
+  "bin": {
+    "diffuser": "./src/diffuser/cli.ts"
+  },
   "scripts": {
     "dev": "bun --hot src/index.ts",
     "build": "bun build ./src/index.html --outdir=dist --sourcemap --target=browser --minify --define:process.env.NODE_ENV='\"production\"' --env='BUN_PUBLIC_*'",
@@ -25,7 +28,8 @@
     "check": "ultracite check",
     "fix": "ultracite fix",
     "prepare": "effect-language-service patch",
-    "sandcastle": "npx tsx .sandcastle/main.mts"
+    "sandcastle": "npx tsx .sandcastle/main.mts",
+    "test": "bun test"
   },
   "type": "module",
   "version": "0.1.0",

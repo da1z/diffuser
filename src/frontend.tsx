@@ -7,7 +7,7 @@
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "./app";
+import { App } from "./review-app";
 
 const elem = document.getElementById("root");
 if (!elem) {
