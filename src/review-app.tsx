@@ -169,6 +169,7 @@ const enrichFileDiffWithSnapshot = ({
 
 	return (
 		processFile(patchFileEntry, {
+			isGitDiff: true,
 			oldFile: snapshot.oldFile,
 			newFile: snapshot.newFile,
 		}) ?? fileDiff

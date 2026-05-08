@@ -29,18 +29,32 @@ index 3333333..4444444 100644
 	expect(
 		alignedEntries.map(({ fileDiff, patchFileEntry, snapshot }) => ({
 			name: fileDiff.name,
-			patchFileEntry: patchFileEntry?.split("\n")[0],
+			patchFileEntry,
 			snapshot: snapshot?.label,
 		}))
 	).toEqual([
 		{
 			name: "first.txt",
-			patchFileEntry: "diff --git a/first.txt b/first.txt",
+			patchFileEntry: `diff --git a/first.txt b/first.txt
+index 1111111..2222222 100644
+--- a/first.txt
++++ b/first.txt
+@@ -1 +1 @@
+-first old
++first new
+`,
 			snapshot: "first snapshot",
 		},
 		{
 			name: "second.txt",
-			patchFileEntry: "diff --git a/second.txt b/second.txt",
+			patchFileEntry: `diff --git a/second.txt b/second.txt
+index 3333333..4444444 100644
+--- a/second.txt
++++ b/second.txt
+@@ -1 +1 @@
+-second old
++second new
+`,
 			snapshot: "second snapshot",
 		},
 	]);

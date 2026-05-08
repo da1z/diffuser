@@ -1,4 +1,8 @@
-import { type FileDiffMetadata, parsePatchFiles } from "@pierre/diffs";
+import {
+	type FileDiffMetadata,
+	GIT_DIFF_FILE_BREAK_REGEX,
+	parsePatchFiles,
+} from "@pierre/diffs";
 
 export interface ParsedPatchFileEntry {
 	readonly fileDiff: FileDiffMetadata;
@@ -10,11 +14,9 @@ export interface PatchFileEntryAlignment<Snapshot>
 	readonly snapshot: Snapshot | undefined;
 }
 
-const gitDiffFileEntryBoundary = /(?=^diff --git)/gm;
-
 const splitPatchIntoFileEntries = (patch: string) =>
 	patch
-		.split(gitDiffFileEntryBoundary)
+		.split(GIT_DIFF_FILE_BREAK_REGEX)
 		.filter((entry) => entry.startsWith("diff --git"));
 
 export const parsePatchFileEntries = (
