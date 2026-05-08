@@ -44,6 +44,8 @@ export const App = ({ initialSession }: AppProps) => {
 		return <main className="app">Loading Review Session...</main>;
 	}
 
+	const commit = session.context.commit;
+
 	return (
 		<main className="app">
 			<header className="review-header">
@@ -53,6 +55,12 @@ export const App = ({ initialSession }: AppProps) => {
 					{session.context.repository.workingDirectory} in{" "}
 					{session.context.repository.root}
 				</p>
+				{commit === undefined ? undefined : (
+					<p>
+						{commit.shortOid} by {commit.authorName} &lt;{commit.authorEmail}
+						&gt; on {commit.authoredAt}: {commit.subject}
+					</p>
+				)}
 				<p>Captured {session.context.capturedAt}</p>
 			</header>
 			<section aria-label="Patch">

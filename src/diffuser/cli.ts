@@ -5,7 +5,7 @@ import { Cause, Effect, Exit, Option } from "effect";
 import { serveReviewSession } from "./server";
 import {
 	bunGitAdapter,
-	createDiffReviewSession,
+	createReviewSession,
 	diffuserHelp,
 	EmptyPatchError,
 	GitError,
@@ -47,14 +47,8 @@ if (parsed.kind === "help") {
 	process.exit(1);
 }
 
-if (parsed.kind !== "diff") {
-	console.error("Only diffuser diff is implemented in this slice.\n");
-	console.log(diffuserHelp);
-	process.exit(1);
-}
-
 const exit = await Effect.runPromiseExit(
-	createDiffReviewSession({
+	createReviewSession({
 		argv,
 		cwd: process.cwd(),
 		now: () => new Date(),
