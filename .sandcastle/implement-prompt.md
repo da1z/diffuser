@@ -45,7 +45,7 @@ Before committing, run `bun run typecheck`, `bun test`, and `bun run check` to e
 
 Make a git commit. The commit message must:
 
-1. Start with `RALPH:` prefix
+1. Start with `factory:` prefix
 2. Include task completed + PRD reference
 3. Key decisions made
 4. Files changed
