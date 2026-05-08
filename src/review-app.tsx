@@ -403,7 +403,11 @@ const ReviewCommentToolbar = ({
 		<button aria-label="Copy review" onClick={onCopy} type="button">
 			Copy review
 		</button>
-		<button onClick={onClear} type="button">
+		<button
+			aria-label="Clear draft review comments"
+			onClick={onClear}
+			type="button"
+		>
 			Clear
 		</button>
 		{copyError === undefined ? undefined : <p>{copyError}</p>}

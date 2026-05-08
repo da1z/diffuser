@@ -149,11 +149,29 @@ const viewedControlsFor = (container: Element, label: string) =>
 const viewedControlPressedState = (control: HTMLButtonElement | null) =>
 	control?.getAttribute("aria-pressed");
 
+const fileProbeFor = (container: Element, fileName: string, occurrence = 0) =>
+	Array.from(
+		container.querySelectorAll<HTMLElement>(`[data-file="${fileName}"]`)
+	)[occurrence];
+
+const fileHeaderTextFor = (
+	container: Element,
+	fileName: string,
+	occurrence = 0
+) =>
+	fileProbeFor(container, fileName, occurrence)?.querySelector("header")
+		?.textContent;
+
 interface DraftReviewSelectionRange {
 	readonly end: number;
 	readonly endSide?: "deletions" | "additions";
 	readonly side: "deletions" | "additions";
 	readonly start: number;
+}
+
+interface SubmitDraftReviewCommentOptions {
+	readonly fileName?: string;
+	readonly occurrence?: number;
 }
 
 const FileDiffProbe = ({
@@ -219,9 +237,22 @@ const FileDiffProbe = ({
 	);
 };
 
-const submitDraftReviewComment = (container: Element, body: string) => {
+const submitDraftReviewComment = (
+	container: Element,
+	body: string,
+	options: SubmitDraftReviewCommentOptions = {}
+) => {
+	const target =
+		options.fileName === undefined
+			? container
+			: fileProbeFor(container, options.fileName, options.occurrence);
+
+	if (target === undefined) {
+		throw new Error("Draft review comment target file was not rendered.");
+	}
+
 	act(() => {
-		container
+		target
 			.querySelector<HTMLButtonElement>(
 				'button[aria-label="Select added line"]'
 			)
@@ -701,6 +732,182 @@ Please simplify this branch.`,
 	]);
 	expect(container.textContent).not.toContain("Please simplify this branch.");
 	expect(container.textContent).not.toContain("Copy review");
+
+	act(() => {
+		root.unmount();
+	});
+});
+
+test("clears all Draft Review Comments only after browser confirmation", () => {
+	const confirmationMessages: string[] = [];
+	const clipboardWrites: string[] = [];
+	let shouldConfirm = false;
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff DiffRenderer={FileDiffProbe} patch={multiFilePatch} />
+	);
+	Object.defineProperty(window.navigator, "clipboard", {
+		configurable: true,
+		value: {
+			writeText: (text: string) => {
+				clipboardWrites.push(text);
+
+				return Promise.resolve();
+			},
+		},
+	});
+	Object.defineProperty(window, "confirm", {
+		configurable: true,
+		value: (message: string) => {
+			confirmationMessages.push(message);
+
+			return shouldConfirm;
+		},
+	});
+	const clearDraftReviewComments = () =>
+		container.querySelector<HTMLButtonElement>(
+			'button[aria-label="Clear draft review comments"]'
+		);
+
+	submitDraftReviewComment(container, "Clear this only after confirmation.");
+
+	expect(clearDraftReviewComments()).not.toBeNull();
+
+	act(() => {
+		clearDraftReviewComments()?.click();
+	});
+
+	expect(confirmationMessages).toEqual(["Clear all draft review comments?"]);
+	expect(container.textContent).toContain(
+		"Clear this only after confirmation."
+	);
+	expect(clipboardWrites).toEqual([]);
+
+	shouldConfirm = true;
+	act(() => {
+		clearDraftReviewComments()?.click();
+	});
+
+	expect(confirmationMessages).toEqual([
+		"Clear all draft review comments?",
+		"Clear all draft review comments?",
+	]);
+	expect(container.textContent).not.toContain(
+		"Clear this only after confirmation."
+	);
+	expect(container.textContent).not.toContain("Copy review");
+	expect(clipboardWrites).toEqual([]);
+
+	act(() => {
+		root.unmount();
+	});
+});
+
+test("discards individual Draft Review Comments without confirmation", () => {
+	const confirmationMessages: string[] = [];
+	const { commentTexts, discardDraft, root, selectLines, submitDraft } =
+		renderDraftReviewCommentProbe();
+	Object.defineProperty(window, "confirm", {
+		configurable: true,
+		value: (message: string) => {
+			confirmationMessages.push(message);
+
+			return true;
+		},
+	});
+
+	selectLines({ start: 2, end: 2, side: "additions" });
+	submitDraft("Discard this single comment quickly.");
+	discardDraft("Discard this single comment quickly.");
+
+	expect(commentTexts()).toEqual([]);
+	expect(confirmationMessages).toEqual([]);
+
+	act(() => {
+		root.unmount();
+	});
+});
+
+test("surfaces per-file Draft Review Comment counts independently from viewed and collapsed state", () => {
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff DiffRenderer={FileDiffProbe} patch={multiFilePatch} />
+	);
+	Object.defineProperty(window, "confirm", {
+		configurable: true,
+		value: () => true,
+	});
+	const aFile = () => fileProbeFor(container, "a.txt");
+	const bFile = () => fileProbeFor(container, "b.txt");
+	const aViewed = () => viewedControlFor(container, "a.txt");
+	const bViewed = () => viewedControlFor(container, "b.txt");
+	const aCollapseToggle = () =>
+		container.querySelector<HTMLButtonElement>(
+			'button[aria-label="Toggle a.txt collapsed"]'
+		);
+	const bCollapseToggle = () =>
+		container.querySelector<HTMLButtonElement>(
+			'button[aria-label="Toggle b.txt collapsed"]'
+		);
+	const clearDraftReviewComments = () =>
+		container.querySelector<HTMLButtonElement>(
+			'button[aria-label="Clear draft review comments"]'
+		);
+
+	expect(fileHeaderTextFor(container, "a.txt")).not.toContain("comment");
+	expect(fileHeaderTextFor(container, "b.txt")).not.toContain("comment");
+
+	submitDraftReviewComment(container, "First file concern.", {
+		fileName: "a.txt",
+	});
+
+	expect(fileHeaderTextFor(container, "a.txt")).toContain("1 comment");
+	expect(fileHeaderTextFor(container, "b.txt")).not.toContain("comment");
+	expect(viewedControlPressedState(aViewed())).toBe("false");
+	expect(aFile()?.dataset.collapsed).toBe("false");
+
+	act(() => {
+		aViewed()?.click();
+	});
+
+	expect(fileHeaderTextFor(container, "a.txt")).toContain("1 comment");
+	expect(viewedControlPressedState(aViewed())).toBe("true");
+	expect(aFile()?.dataset.collapsed).toBe("true");
+
+	submitDraftReviewComment(container, "Second file concern.", {
+		fileName: "b.txt",
+	});
+
+	expect(fileHeaderTextFor(container, "a.txt")).toContain("1 comment");
+	expect(fileHeaderTextFor(container, "b.txt")).toContain("1 comment");
+	expect(container.textContent).toContain("2 draft comments");
+	expect(viewedControlPressedState(bViewed())).toBe("false");
+	expect(bFile()?.dataset.collapsed).toBe("false");
+
+	act(() => {
+		bCollapseToggle()?.click();
+	});
+
+	expect(fileHeaderTextFor(container, "b.txt")).toContain("1 comment");
+	expect(viewedControlPressedState(bViewed())).toBe("false");
+	expect(bFile()?.dataset.collapsed).toBe("true");
+
+	act(() => {
+		clearDraftReviewComments()?.click();
+	});
+
+	expect(fileHeaderTextFor(container, "a.txt")).not.toContain("comment");
+	expect(fileHeaderTextFor(container, "b.txt")).not.toContain("comment");
+	expect(viewedControlPressedState(aViewed())).toBe("true");
+	expect(aFile()?.dataset.collapsed).toBe("true");
+	expect(viewedControlPressedState(bViewed())).toBe("false");
+	expect(bFile()?.dataset.collapsed).toBe("true");
+	expect(container.textContent).not.toContain("Copy review");
+
+	act(() => {
+		aCollapseToggle()?.click();
+	});
+
+	expect(viewedControlPressedState(aViewed())).toBe("true");
+	expect(aFile()?.dataset.collapsed).toBe("false");
 
 	act(() => {
 		root.unmount();
