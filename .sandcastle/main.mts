@@ -43,6 +43,17 @@ const hooks = {
 // platform-specific binaries and any packages added since the last copy.
 const copyToWorktree = ["node_modules"];
 
+const dockerSandbox = () =>
+  docker({
+    mounts: [
+      {
+        hostPath: "../sandcastle/ai-hero-sandcastle-0.5.7.tgz",
+        sandboxPath: "/home/agent/sandcastle/ai-hero-sandcastle-0.5.7.tgz",
+        readonly: true,
+      },
+    ],
+  });
+
 // ---------------------------------------------------------------------------
 // Main loop
 // ---------------------------------------------------------------------------
@@ -61,13 +72,13 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // -------------------------------------------------------------------------
   const plan = await sandcastle.run({
     hooks,
-    sandbox: docker(),
+    sandbox: dockerSandbox(),
     name: "planner",
     // One iteration is enough: the planner just needs to read and reason,
     // not write code.
     maxIterations: 1,
     // Opus for planning: dependency analysis benefits from deeper reasoning.
-    agent: sandcastle.cursor("auto"),
+    agent: sandcastle.cursor("gpt-5.5-medium-fast"),
     promptFile: "./.sandcastle/plan-prompt.md",
   });
 
@@ -111,7 +122,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     issues.map(async (issue) => {
       const sandbox = await sandcastle.createSandbox({
         branch: issue.branch,
-        sandbox: docker(),
+        sandbox: dockerSandbox(),
         hooks,
         copyToWorktree,
       });
@@ -121,7 +132,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
         const implement = await sandbox.run({
           name: "implementer",
           maxIterations: 100,
-          agent: sandcastle.cursor("auto"),
+          agent: sandcastle.cursor("gpt-5.5-medium-fast"),
           promptFile: "./.sandcastle/implement-prompt.md",
           promptArgs: {
             TASK_ID: issue.id,
@@ -135,7 +146,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
           const review = await sandbox.run({
             name: "reviewer",
             maxIterations: 1,
-            agent: sandcastle.cursor("auto"),
+            agent: sandcastle.cursor("gpt-5.5-extra-high-fast"),
             promptFile: "./.sandcastle/review-prompt.md",
             promptArgs: {
               BRANCH: issue.branch,
@@ -203,10 +214,10 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // -------------------------------------------------------------------------
   await sandcastle.run({
     hooks,
-    sandbox: docker(),
+    sandbox: dockerSandbox(),
     name: "merger",
     maxIterations: 1,
-    agent: sandcastle.cursor("auto"),
+    agent: sandcastle.cursor("gpt-5.5-extra-high-fast"),
     promptFile: "./.sandcastle/merge-prompt.md",
     promptArgs: {
       // A markdown list of branch names, one per line.
