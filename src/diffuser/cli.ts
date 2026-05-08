@@ -59,7 +59,7 @@ if (parsed.kind === "help") {
 let releaseReviewSessionKeepAlive: () => void = () => undefined;
 const exit = await Effect.runPromiseExit(
 	launchReviewSession({
-		argv,
+		command: parsed,
 		cwd: process.cwd(),
 		now: () => new Date(),
 		git: bunGitAdapter,

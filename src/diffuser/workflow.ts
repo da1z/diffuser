@@ -115,6 +115,13 @@ export interface DiffWorkflowInput {
 	readonly now: () => Date;
 }
 
+export interface ParsedDiffWorkflowInput {
+	readonly command: DiffuserCommand;
+	readonly cwd: string;
+	readonly git: GitAdapter;
+	readonly now: () => Date;
+}
+
 export const diffuserHelp = `Usage:
   diffuser [--no-open] diff [git diff args]
   diffuser [--no-open] show [commit-ish] [-- pathspec...]
@@ -594,6 +601,28 @@ const createShowSessionFromCommand = ({
 		};
 	});
 
+export const createReviewSessionFromCommand = ({
+	command,
+	cwd,
+	now,
+	git,
+}: ParsedDiffWorkflowInput): Effect.Effect<
+	ReviewSession,
+	ParseError | GitError | EmptyPatchError
+> =>
+	Effect.gen(function* () {
+		switch (command.kind) {
+			case "diff":
+				return yield* createDiffSessionFromCommand({ command, cwd, now, git });
+			case "show":
+				return yield* createShowSessionFromCommand({ command, cwd, now, git });
+			default:
+				return yield* new ParseError({
+					message: "Expected diffuser diff or show arguments.",
+				});
+		}
+	});
+
 export const createReviewSession = ({
 	argv,
 	cwd,
@@ -606,16 +635,7 @@ export const createReviewSession = ({
 	Effect.gen(function* () {
 		const command = parseDiffuserCommand(argv);
 
-		switch (command.kind) {
-			case "diff":
-				return yield* createDiffSessionFromCommand({ command, cwd, now, git });
-			case "show":
-				return yield* createShowSessionFromCommand({ command, cwd, now, git });
-			default:
-				return yield* new ParseError({
-					message: "Expected diffuser diff or show arguments.",
-				});
-		}
+		return yield* createReviewSessionFromCommand({ command, cwd, now, git });
 	});
 
 export const createDiffReviewSession = ({

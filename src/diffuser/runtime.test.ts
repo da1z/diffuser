@@ -3,7 +3,11 @@ import { Effect } from "effect";
 
 import { formatReviewSessionLine } from "./protocol";
 import { launchReviewSession, type ReviewServerLaunchOptions } from "./runtime";
-import type { GitAdapter, ReviewSession } from "./workflow";
+import {
+	type GitAdapter,
+	parseDiffuserCommand,
+	type ReviewSession,
+} from "./workflow";
 
 const diffGitAdapter = {
 	blob: () => Effect.die("blob should not run for diffuser diff"),
@@ -18,6 +22,42 @@ const diffGitAdapter = {
 		Effect.die("workingTreeFile should not run for diffuser diff"),
 } satisfies GitAdapter;
 
+test("launches from one parsed diffuser diff command", async () => {
+	const openedUrls: string[] = [];
+	const printedLines: string[] = [];
+	const servedSessions: ReviewSession[] = [];
+	const servedOptions: ReviewServerLaunchOptions[] = [];
+
+	const launch = await Effect.runPromise(
+		launchReviewSession({
+			command: parseDiffuserCommand(["diff", "--staged"]),
+			cwd: "/repo",
+			now: () => new Date("2026-05-08T02:41:00.000Z"),
+			git: diffGitAdapter,
+			serve: (session, options) => {
+				servedSessions.push(session);
+				servedOptions.push(options);
+				return { url: new URL("http://127.0.0.1:49152/") };
+			},
+			openBrowser: (url) => {
+				openedUrls.push(url);
+			},
+			printLine: (line) => {
+				printedLines.push(line);
+			},
+		})
+	);
+
+	expect(launch.session.kind).toBe("diff");
+	expect(launch.session.context.command).toBe("diffuser diff --staged");
+	expect(servedSessions).toEqual([launch.session]);
+	expect(servedOptions).toEqual([{ shutdownOnPageUnload: true }]);
+	expect(printedLines).toEqual([
+		formatReviewSessionLine("http://127.0.0.1:49152/"),
+	]);
+	expect(openedUrls).toEqual(["http://127.0.0.1:49152/"]);
+});
+
 test("launches a one-shot Review Session and opens the Local Review UI by default", async () => {
 	const openedUrls: string[] = [];
 	const printedLines: string[] = [];
@@ -25,7 +65,7 @@ test("launches a one-shot Review Session and opens the Local Review UI by defaul
 
 	const launch = await Effect.runPromise(
 		launchReviewSession({
-			argv: ["diff", "--staged"],
+			command: parseDiffuserCommand(["diff", "--staged"]),
 			cwd: "/repo",
 			now: () => new Date("2026-05-08T02:41:00.000Z"),
 			git: diffGitAdapter,
@@ -57,7 +97,7 @@ test("--no-open prints the URL without opening a browser", async () => {
 
 	await Effect.runPromise(
 		launchReviewSession({
-			argv: ["--no-open", "diff"],
+			command: parseDiffuserCommand(["--no-open", "diff"]),
 			cwd: "/repo",
 			now: () => new Date("2026-05-08T02:41:00.000Z"),
 			git: diffGitAdapter,
@@ -87,7 +127,7 @@ test("enables browser unload shutdown only for auto-open sessions", async () => 
 
 	await Effect.runPromise(
 		launchReviewSession({
-			argv: ["diff"],
+			command: parseDiffuserCommand(["diff"]),
 			cwd: "/repo",
 			now: () => new Date("2026-05-08T02:41:00.000Z"),
 			git: diffGitAdapter,
@@ -111,7 +151,7 @@ test("launches diffuser show as a browser Commit Review through the Workflow Run
 
 	const launch = await Effect.runPromise(
 		launchReviewSession({
-			argv: ["show", "HEAD"],
+			command: parseDiffuserCommand(["show", "HEAD"]),
 			cwd: "/repo",
 			now: () => new Date("2026-05-08T03:10:00.000Z"),
 			git: {

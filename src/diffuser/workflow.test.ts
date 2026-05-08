@@ -4,6 +4,7 @@ import { Effect, Either } from "effect";
 import {
 	createDiffReviewSession,
 	createReviewSession,
+	createReviewSessionFromCommand,
 	EmptyPatchError,
 	GitError,
 	ParseError,
@@ -29,6 +30,46 @@ describe("Diffuser command parsing", () => {
 });
 
 describe("diff Review Sessions", () => {
+	test("creates a session from a parsed diff command without reparsing argv", async () => {
+		const calls: Array<{
+			command: "diff" | "root";
+			args: readonly string[];
+			cwd: string;
+		}> = [];
+
+		const session = await Effect.runPromise(
+			createReviewSessionFromCommand({
+				command: parseDiffuserCommand(["--no-open", "diff", "--staged"]),
+				cwd: "/repo/packages/app",
+				now: () => new Date("2026-05-08T02:41:00.000Z"),
+				git: {
+					diff: ({ args, cwd }) => {
+						calls.push({ command: "diff", args, cwd });
+						return Effect.succeed({
+							stdout:
+								"diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new\n",
+							stderr: "",
+						});
+					},
+					showCommit: () => Effect.die("should not run"),
+					blob: () => Effect.die("blob should not run"),
+					workingTreeFile: () => Effect.die("workingTreeFile should not run"),
+					repositoryRoot: ({ cwd }) => {
+						calls.push({ command: "root", args: [], cwd });
+						return Effect.succeed("/repo");
+					},
+				},
+			})
+		);
+
+		expect(calls).toEqual([
+			{ command: "diff", args: ["--staged"], cwd: "/repo/packages/app" },
+			{ command: "root", args: [], cwd: "/repo/packages/app" },
+		]);
+		expect(session.kind).toBe("diff");
+		expect(session.context.command).toBe("diffuser diff --staged");
+	});
+
 	test("creates an immutable read-only session from non-empty git diff output", async () => {
 		const calls: Array<{
 			command: "diff" | "root";
@@ -216,6 +257,86 @@ describe("diff Review Sessions", () => {
 });
 
 describe("show Commit Reviews", () => {
+	test("creates a Commit Review from a parsed show command", async () => {
+		const calls: Array<{
+			command: "show" | "root";
+			commitish?: string;
+			pathspec?: readonly string[];
+			cwd: string;
+		}> = [];
+
+		const session = await Effect.runPromise(
+			createReviewSessionFromCommand({
+				command: parseDiffuserCommand(["show", "abc123", "--", "src/"]),
+				cwd: "/repo/packages/app",
+				now: () => new Date("2026-05-08T03:10:00.000Z"),
+				git: {
+					blob: () => Effect.die("blob should not run"),
+					diff: () => Effect.die("should not run"),
+					showCommit: ({ commitish, pathspec, cwd }) => {
+						calls.push({ command: "show", commitish, pathspec, cwd });
+						return Effect.succeed({
+							metadata: {
+								oid: "abc123def456",
+								shortOid: "abc123",
+								authorName: "Ada Lovelace",
+								authorEmail: "ada@example.com",
+								authoredAt: "2026-05-07T12:00:00+00:00",
+								subject: "Path filtered commit",
+							},
+							patch:
+								"diff --git a/src/file.txt b/src/file.txt\n--- a/src/file.txt\n+++ b/src/file.txt\n@@ -1 +1 @@\n-old\n+new\n",
+						});
+					},
+					repositoryRoot: ({ cwd }) => {
+						calls.push({ command: "root", cwd });
+						return Effect.succeed("/repo");
+					},
+					workingTreeFile: () => Effect.die("workingTreeFile should not run"),
+				},
+			})
+		);
+
+		expect(calls).toEqual([
+			{
+				command: "show",
+				commitish: "abc123",
+				pathspec: ["src/"],
+				cwd: "/repo/packages/app",
+			},
+			{ command: "root", cwd: "/repo/packages/app" },
+		]);
+		expect(session.kind).toBe("show");
+		expect(session.context.command).toBe("diffuser show abc123 -- src/");
+	});
+
+	test("rejects a parsed help command before running Git", async () => {
+		const result = await Effect.runPromise(
+			Effect.either(
+				createReviewSessionFromCommand({
+					command: parseDiffuserCommand([]),
+					cwd: "/repo",
+					now: () => new Date("2026-05-08T03:10:00.000Z"),
+					git: {
+						blob: () => Effect.die("should not run"),
+						diff: () => Effect.die("should not run"),
+						showCommit: () => Effect.die("should not run"),
+						repositoryRoot: () => Effect.die("should not run"),
+						workingTreeFile: () => Effect.die("should not run"),
+					},
+				})
+			)
+		);
+
+		expect(Either.isLeft(result)).toBe(true);
+		if (Either.isLeft(result)) {
+			expect(result.left).toBeInstanceOf(ParseError);
+			expect(result.left.message).toBe(
+				"Expected diffuser diff or show arguments."
+			);
+		}
+	});
+
 	test("defaults to HEAD and creates a Commit Review with metadata", async () => {
 		const calls: Array<{
 			command: "show" | "root";

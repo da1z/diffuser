@@ -2,12 +2,12 @@ import { Effect } from "effect";
 
 import { formatReviewSessionLine } from "./protocol";
 import {
-	createReviewSession,
-	type DiffWorkflowInput,
+	createReviewSessionFromCommand,
+	type DiffuserCommand,
 	type EmptyPatchError,
+	type GitAdapter,
 	type GitError,
 	type ParseError,
-	parseDiffuserCommand,
 	type ReviewSession,
 } from "./workflow";
 
@@ -19,7 +19,11 @@ export interface ReviewServerLaunchOptions {
 	readonly shutdownOnPageUnload: boolean;
 }
 
-export interface ReviewRuntimeInput extends DiffWorkflowInput {
+export interface ReviewRuntimeInput {
+	readonly command: DiffuserCommand;
+	readonly cwd: string;
+	readonly git: GitAdapter;
+	readonly now: () => Date;
 	readonly openBrowser: (url: string) => void;
 	readonly printLine: (line: string) => void;
 	readonly serve: (
@@ -35,7 +39,7 @@ export interface LaunchedReviewSession {
 }
 
 export const launchReviewSession = ({
-	argv,
+	command,
 	cwd,
 	git,
 	now,
@@ -47,8 +51,12 @@ export const launchReviewSession = ({
 	ParseError | GitError | EmptyPatchError
 > =>
 	Effect.gen(function* () {
-		const command = parseDiffuserCommand(argv);
-		const session = yield* createReviewSession({ argv, cwd, git, now });
+		const session = yield* createReviewSessionFromCommand({
+			command,
+			cwd,
+			git,
+			now,
+		});
 		const server = serve(session, {
 			shutdownOnPageUnload: command.openBrowser,
 		});
