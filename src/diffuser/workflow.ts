@@ -108,14 +108,14 @@ export class EmptyPatchError extends Data.TaggedError("EmptyPatchError")<{
 	readonly message: string;
 }> {}
 
-export interface DiffWorkflowInput {
+export interface ReviewWorkflowInput {
 	readonly argv: readonly string[];
 	readonly cwd: string;
 	readonly git: GitAdapter;
 	readonly now: () => Date;
 }
 
-export interface ParsedDiffWorkflowInput {
+export interface ParsedReviewWorkflowInput {
 	readonly command: DiffuserCommand;
 	readonly cwd: string;
 	readonly git: GitAdapter;
@@ -606,7 +606,7 @@ export const createReviewSessionFromCommand = ({
 	cwd,
 	now,
 	git,
-}: ParsedDiffWorkflowInput): Effect.Effect<
+}: ParsedReviewWorkflowInput): Effect.Effect<
 	ReviewSession,
 	ParseError | GitError | EmptyPatchError
 > =>
@@ -628,7 +628,7 @@ export const createReviewSession = ({
 	cwd,
 	now,
 	git,
-}: DiffWorkflowInput): Effect.Effect<
+}: ReviewWorkflowInput): Effect.Effect<
 	ReviewSession,
 	ParseError | GitError | EmptyPatchError
 > =>
@@ -643,7 +643,7 @@ export const createDiffReviewSession = ({
 	cwd,
 	now,
 	git,
-}: DiffWorkflowInput): Effect.Effect<
+}: ReviewWorkflowInput): Effect.Effect<
 	ReviewSession,
 	ParseError | GitError | EmptyPatchError
 > =>
