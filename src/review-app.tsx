@@ -1,7 +1,10 @@
 import { parsePatchFiles } from "@pierre/diffs";
-import { FileDiff } from "@pierre/diffs/react";
-import type { ComponentType, ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import {
+	FileDiff,
+	type FileDiffMetadata,
+	type FileDiffProps,
+} from "@pierre/diffs/react";
+import { type ComponentType, useEffect, useMemo, useState } from "react";
 
 import { reviewSessionEndpoint } from "./diffuser/protocol";
 import type { ReviewSession } from "./diffuser/workflow";
@@ -16,21 +19,18 @@ type FetchReviewSession = (
 	init?: Parameters<typeof fetch>[1]
 ) => ReturnType<typeof fetch>;
 
-type ParsedFileDiff = ReturnType<
-	typeof parsePatchFiles
->[number]["files"][number];
+type ParsedFileDiff = FileDiffMetadata;
 type ReviewSessionContext = ReviewSession["context"];
 interface FileReviewState {
 	readonly collapsed: boolean;
 	readonly viewed: boolean;
 }
 type FileReviewStates = Record<string, FileReviewState | undefined>;
-export interface FileDiffRendererProps {
-	readonly fileDiff: ParsedFileDiff;
-	readonly options?: typeof splitDiffOptions & { readonly collapsed?: boolean };
-	readonly renderHeaderMetadata?: (fileDiff: ParsedFileDiff) => ReactNode;
-	readonly renderHeaderPrefix?: (fileDiff: ParsedFileDiff) => ReactNode;
-}
+export interface FileDiffRendererProps
+	extends Pick<
+		FileDiffProps<undefined>,
+		"fileDiff" | "options" | "renderHeaderMetadata" | "renderHeaderPrefix"
+	> {}
 
 const splitDiffOptions = { diffStyle: "split" } as const;
 const initialFileReviewState: FileReviewState = {
@@ -38,8 +38,9 @@ const initialFileReviewState: FileReviewState = {
 	collapsed: false,
 };
 
-const fileDiffKey = (fileDiff: ParsedFileDiff) =>
+const fileDiffKey = (fileDiff: ParsedFileDiff, index: number) =>
 	[
+		index,
 		fileDiff.prevName,
 		fileDiff.name,
 		fileDiff.type,
@@ -51,6 +52,52 @@ const fileReviewLabel = (fileDiff: ParsedFileDiff) =>
 
 const getFileReviewState = (states: FileReviewStates, key: string) =>
 	states[key] ?? initialFileReviewState;
+
+interface FileCollapseToggleProps {
+	readonly collapsed: boolean;
+	readonly label: string;
+	readonly onToggle: () => void;
+}
+
+const FileCollapseToggle = ({
+	collapsed,
+	label,
+	onToggle,
+}: FileCollapseToggleProps) => (
+	<button
+		aria-expanded={!collapsed}
+		aria-label={`Toggle ${label} collapsed`}
+		className="file-collapse-toggle"
+		onClick={onToggle}
+		type="button"
+	>
+		{collapsed ? "+" : "-"}
+	</button>
+);
+
+interface ViewedFileControlProps {
+	readonly label: string;
+	readonly onViewedChange: (viewed: boolean) => void;
+	readonly viewed: boolean;
+}
+
+const ViewedFileControl = ({
+	label,
+	onViewedChange,
+	viewed,
+}: ViewedFileControlProps) => (
+	<label className="viewed-file-control">
+		<input
+			aria-label={`Mark ${label} viewed`}
+			checked={viewed}
+			onChange={(event) => {
+				onViewedChange(event.currentTarget.checked);
+			}}
+			type="checkbox"
+		/>
+		Viewed
+	</label>
+);
 
 export const loadReviewSession = async (
 	fetchSession: FetchReviewSession = fetch
@@ -78,37 +125,32 @@ export const ContinuousPatchDiff = ({
 		() => parsePatchFiles(patch).flatMap((parsedPatch) => parsedPatch.files),
 		[patch]
 	);
+	const updateFileReviewState = (
+		key: string,
+		update: (current: FileReviewState) => FileReviewState
+	) => {
+		setFileReviewStates((states) => ({
+			...states,
+			[key]: update(getFileReviewState(states, key)),
+		}));
+	};
 	const markViewed = (key: string, viewed: boolean) => {
-		setFileReviewStates((states) => {
-			const current = getFileReviewState(states, key);
-
-			return {
-				...states,
-				[key]: {
-					viewed,
-					collapsed: viewed ? true : current.collapsed,
-				},
-			};
-		});
+		updateFileReviewState(key, (current) => ({
+			viewed,
+			collapsed: viewed ? true : current.collapsed,
+		}));
 	};
 	const toggleCollapsed = (key: string) => {
-		setFileReviewStates((states) => {
-			const current = getFileReviewState(states, key);
-
-			return {
-				...states,
-				[key]: {
-					...current,
-					collapsed: !current.collapsed,
-				},
-			};
-		});
+		updateFileReviewState(key, (current) => ({
+			...current,
+			collapsed: !current.collapsed,
+		}));
 	};
 
 	return (
 		<>
-			{fileDiffs.map((fileDiff) => {
-				const key = fileDiffKey(fileDiff);
+			{fileDiffs.map((fileDiff, index) => {
+				const key = fileDiffKey(fileDiff, index);
 				const fileReviewState = getFileReviewState(fileReviewStates, key);
 				const label = fileReviewLabel(fileDiff);
 
@@ -121,30 +163,22 @@ export const ContinuousPatchDiff = ({
 							collapsed: fileReviewState.collapsed,
 						}}
 						renderHeaderMetadata={() => (
-							<label className="viewed-file-control">
-								<input
-									aria-label={`Mark ${label} viewed`}
-									checked={fileReviewState.viewed}
-									onChange={(event) => {
-										markViewed(key, event.currentTarget.checked);
-									}}
-									type="checkbox"
-								/>
-								Viewed
-							</label>
+							<ViewedFileControl
+								label={label}
+								onViewedChange={(viewed) => {
+									markViewed(key, viewed);
+								}}
+								viewed={fileReviewState.viewed}
+							/>
 						)}
 						renderHeaderPrefix={() => (
-							<button
-								aria-expanded={!fileReviewState.collapsed}
-								aria-label={`Toggle ${label} collapsed`}
-								className="file-collapse-toggle"
-								onClick={() => {
+							<FileCollapseToggle
+								collapsed={fileReviewState.collapsed}
+								label={label}
+								onToggle={() => {
 									toggleCollapsed(key);
 								}}
-								type="button"
-							>
-								{fileReviewState.collapsed ? "+" : "-"}
-							</button>
+							/>
 						)}
 					/>
 				);

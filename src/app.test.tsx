@@ -27,6 +27,20 @@ diff --git a/b.txt b/b.txt
 +after
 `;
 
+const repeatedFilePatch = `diff --git a/a.txt b/a.txt
+--- a/a.txt
++++ b/a.txt
+@@ -1 +1 @@
+-old
++new
+diff --git a/a.txt b/a.txt
+--- a/a.txt
++++ b/a.txt
+@@ -1 +1 @@
+-old
++new
+`;
+
 const reviewSession = (
 	overrides: Partial<ReviewSession> = {}
 ): ReviewSession => ({
@@ -204,6 +218,45 @@ test("keeps viewed and collapsed file state independent in the Local Review UI",
 		container.querySelector<HTMLElement>('[data-file="b.txt"]')?.dataset
 			.collapsed
 	).toBe("true");
+
+	act(() => {
+		root.unmount();
+	});
+});
+
+test("keeps repeated file entries independent in the Local Review UI", () => {
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={repeatedFilePatch}
+		/>
+	);
+	const files = () =>
+		Array.from(container.querySelectorAll<HTMLElement>('[data-file="a.txt"]'));
+	const viewedControls = () =>
+		Array.from(
+			container.querySelectorAll<HTMLInputElement>(
+				'input[aria-label="Mark a.txt viewed"]'
+			)
+		);
+
+	expect(files().map((file) => file.dataset.collapsed)).toEqual([
+		"false",
+		"false",
+	]);
+
+	act(() => {
+		viewedControls()[0]?.click();
+	});
+
+	expect(viewedControls().map((control) => control.checked)).toEqual([
+		true,
+		false,
+	]);
+	expect(files().map((file) => file.dataset.collapsed)).toEqual([
+		"true",
+		"false",
+	]);
 
 	act(() => {
 		root.unmount();
