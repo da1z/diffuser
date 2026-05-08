@@ -72,6 +72,10 @@ _Avoid_: Unified-only view, layout toggle
 A **Patch** rendering with syntax highlighting for changed files.
 _Avoid_: Plain text diff
 
+**Viewed File**:
+A file in the **Continuous Diff View** that the reviewer has marked as already inspected during the current browser session.
+_Avoid_: Approval, saved review state, collapsed file
+
 **Basic Review UI**:
 A minimal **Local Review UI** that relies on the diff renderer's default presentation.
 _Avoid_: Custom visual system, bespoke performance layer
@@ -92,6 +96,8 @@ _Avoid_: Custom visual system, bespoke performance layer
 - The v1 **Local Review UI** presents the **Patch** as a **Continuous Diff View**.
 - The v1 **Continuous Diff View** uses a **Side-by-side Diff** layout.
 - The v1 **Continuous Diff View** is a **Highlighted Diff** when the renderer supports it.
+- A **Viewed File** remains part of the **Patch** while its file body may be collapsed in the **Continuous Diff View**.
+- A **Viewed File** and a collapsed file are separate transient **Local Review UI** states.
 - A **One-shot Server** serves exactly one **Review Session**.
 - A **One-shot Server** exposes its **Review Session** through a **Session Endpoint**.
 - `diffuser diff` uses **Git-shaped Arguments** to choose which changes the **Review Session** captures.
@@ -129,6 +135,9 @@ _Avoid_: Custom visual system, bespoke performance layer
 - The v1 UI uses a **Continuous Diff View**, not file-first navigation.
 - The v1 UI uses only a **Side-by-side Diff** layout, not unified rendering or a layout toggle.
 - Syntax highlighting should come from the diff renderer's built-in capabilities, not custom v1 language or theme configuration.
+- "viewed" means a transient file-level UI marker for the current browser session; it is not persisted review state and does not mean approval.
+- Checking "Viewed" marks a **Viewed File** and auto-collapses that file once; later expand/collapse actions do not change whether the file is viewed.
+- Unchecking "Viewed" removes the **Viewed File** marker without expanding or collapsing the file.
 - Git commands run from the user's original working directory so Git-shaped pathspecs keep normal Git behavior.
 - Diffuser uses Effect for the **Workflow Runtime** from the start; React remains the rendering layer for the **Local Review UI**.
 - v1 defers bundling and publishing decisions until the **Diffuser Command** behavior is proven.
