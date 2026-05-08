@@ -24,7 +24,8 @@
     "typecheck": "tsc --noEmit",
     "check": "ultracite check",
     "fix": "ultracite fix",
-    "prepare": "effect-language-service patch"
+    "prepare": "effect-language-service patch",
+    "sandcastle": "npx tsx .sandcastle/main.mts"
   },
   "type": "module",
   "version": "0.1.0",
