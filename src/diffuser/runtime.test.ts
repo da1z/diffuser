@@ -10,7 +10,6 @@ import {
 } from "./workflow";
 
 const diffGitAdapter = {
-	blob: () => Effect.die("blob should not run for diffuser diff"),
 	diff: () =>
 		Effect.succeed({
 			stdout: "diff --git a/file.txt b/file.txt\n",
@@ -18,8 +17,6 @@ const diffGitAdapter = {
 		}),
 	repositoryRoot: () => Effect.succeed("/repo"),
 	showCommit: () => Effect.die("showCommit should not run for diffuser diff"),
-	workingTreeFile: () =>
-		Effect.die("workingTreeFile should not run for diffuser diff"),
 } satisfies GitAdapter;
 
 test("launches from one parsed diffuser diff command", async () => {
@@ -155,7 +152,6 @@ test("launches diffuser show as a browser Commit Review through the Workflow Run
 			cwd: "/repo",
 			now: () => new Date("2026-05-08T03:10:00.000Z"),
 			git: {
-				blob: () => Effect.die("blob should not run for diffuser show"),
 				diff: () => Effect.die("diff should not run for diffuser show"),
 				repositoryRoot: () => Effect.succeed("/repo"),
 				showCommit: ({ commitish, pathspec }) => {
@@ -174,8 +170,6 @@ test("launches diffuser show as a browser Commit Review through the Workflow Run
 						patch: "diff --git a/file.txt b/file.txt\n",
 					});
 				},
-				workingTreeFile: () =>
-					Effect.die("workingTreeFile should not run for diffuser show"),
 			},
 			serve: (session) => {
 				servedSessions.push(session);

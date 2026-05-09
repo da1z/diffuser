@@ -1,4 +1,4 @@
-import { $, file } from "bun";
+import { $ } from "bun";
 import { Data, Effect } from "effect";
 
 export type DiffuserCommand =
@@ -37,10 +37,6 @@ export interface CommitReviewGitResult {
 }
 
 export interface GitAdapter {
-	readonly blob: (input: {
-		readonly cwd: string;
-		readonly objectId: string;
-	}) => Effect.Effect<GitResult, GitError>;
 	readonly diff: (input: {
 		readonly args: readonly string[];
 		readonly cwd: string;
@@ -53,10 +49,6 @@ export interface GitAdapter {
 		readonly cwd: string;
 		readonly pathspec: readonly string[];
 	}) => Effect.Effect<CommitReviewGitResult, GitError>;
-	readonly workingTreeFile: (input: {
-		readonly cwd: string;
-		readonly path: string;
-	}) => Effect.Effect<GitResult, GitError>;
 }
 
 export interface ReviewSession {
@@ -234,7 +226,6 @@ const parseCommitMetadata = (
 };
 
 export const bunGitAdapter: GitAdapter = {
-	blob: ({ cwd, objectId }) => runGit(cwd, ["cat-file", "-p", objectId]),
 	diff: ({ args, cwd }) => runGit(cwd, ["diff", ...args]),
 	showCommit: ({ commitish, pathspec, cwd }) =>
 		Effect.gen(function* () {
@@ -262,20 +253,6 @@ export const bunGitAdapter: GitAdapter = {
 		Effect.map(runGit(cwd, ["rev-parse", "--show-toplevel"]), ({ stdout }) =>
 			stdout.trim()
 		),
-	workingTreeFile: ({ cwd, path }) =>
-		Effect.tryPromise({
-			try: async () => ({
-				stdout: await file(`${cwd}/${path}`).text(),
-				stderr: "",
-			}),
-			catch: (error) =>
-				new GitError({
-					message:
-						error instanceof Error
-							? error.message
-							: "Working tree file could not be read",
-				}),
-		}),
 };
 
 const createDiffSessionFromCommand = ({

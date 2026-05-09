@@ -52,8 +52,6 @@ describe("diff Review Sessions", () => {
 						});
 					},
 					showCommit: () => Effect.die("should not run"),
-					blob: () => Effect.die("blob should not run"),
-					workingTreeFile: () => Effect.die("workingTreeFile should not run"),
 					repositoryRoot: ({ cwd }) => {
 						calls.push({ command: "root", args: [], cwd });
 						return Effect.succeed("/repo");
@@ -92,8 +90,6 @@ describe("diff Review Sessions", () => {
 						});
 					},
 					showCommit: () => Effect.die("should not run"),
-					blob: () => Effect.die("blob should not run"),
-					workingTreeFile: () => Effect.die("workingTreeFile should not run"),
 					repositoryRoot: ({ cwd }) => {
 						calls.push({ command: "root", args: [], cwd });
 						return Effect.succeed("/repo");
@@ -134,8 +130,6 @@ describe("diff Review Sessions", () => {
 					git: {
 						diff: () => Effect.succeed({ stdout: "", stderr: "" }),
 						showCommit: () => Effect.die("should not run"),
-						blob: () => Effect.die("blob should not run"),
-						workingTreeFile: () => Effect.die("workingTreeFile should not run"),
 						repositoryRoot: () => Effect.die("should not run"),
 					},
 				})
@@ -168,8 +162,6 @@ describe("diff Review Sessions", () => {
 						return Effect.succeed({ stdout: patch, stderr: "" });
 					},
 					showCommit: () => Effect.die("should not run"),
-					blob: () => Effect.die("blob should not run"),
-					workingTreeFile: () => Effect.die("workingTreeFile should not run"),
 					repositoryRoot: ({ cwd }) => {
 						calls.push({ command: "root", cwd });
 						return Effect.succeed("/repo");
@@ -202,7 +194,6 @@ describe("show Commit Reviews", () => {
 				cwd: "/repo/packages/app",
 				now: () => new Date("2026-05-08T03:10:00.000Z"),
 				git: {
-					blob: () => Effect.die("blob should not run"),
 					diff: () => Effect.die("should not run"),
 					showCommit: ({ commitish, pathspec, cwd }) => {
 						calls.push({ command: "show", commitish, pathspec, cwd });
@@ -223,7 +214,6 @@ describe("show Commit Reviews", () => {
 						calls.push({ command: "root", cwd });
 						return Effect.succeed("/repo");
 					},
-					workingTreeFile: () => Effect.die("workingTreeFile should not run"),
 				},
 			})
 		);
@@ -249,11 +239,9 @@ describe("show Commit Reviews", () => {
 					cwd: "/repo",
 					now: () => new Date("2026-05-08T03:10:00.000Z"),
 					git: {
-						blob: () => Effect.die("should not run"),
 						diff: () => Effect.die("should not run"),
 						showCommit: () => Effect.die("should not run"),
 						repositoryRoot: () => Effect.die("should not run"),
-						workingTreeFile: () => Effect.die("should not run"),
 					},
 				})
 			)
@@ -282,7 +270,6 @@ describe("show Commit Reviews", () => {
 				cwd: "/repo/packages/app",
 				now: () => new Date("2026-05-08T03:10:00.000Z"),
 				git: {
-					blob: () => Effect.die("blob should not run"),
 					diff: () => Effect.die("should not run"),
 					showCommit: ({ commitish, pathspec, cwd }) => {
 						calls.push({ command: "show", commitish, pathspec, cwd });
@@ -303,7 +290,6 @@ describe("show Commit Reviews", () => {
 						calls.push({ command: "root", cwd });
 						return Effect.succeed("/repo");
 					},
-					workingTreeFile: () => Effect.die("workingTreeFile should not run"),
 				},
 			})
 		);
@@ -357,7 +343,6 @@ describe("show Commit Reviews", () => {
 				cwd: "/repo",
 				now: () => new Date("2026-05-08T03:11:00.000Z"),
 				git: {
-					blob: () => Effect.die("blob should not run"),
 					diff: () => Effect.die("should not run"),
 					showCommit: ({ commitish, pathspec, cwd }) => {
 						calls.push({ command: "show", commitish, pathspec, cwd });
@@ -378,7 +363,6 @@ describe("show Commit Reviews", () => {
 						calls.push({ command: "root", cwd });
 						return Effect.succeed("/repo");
 					},
-					workingTreeFile: () => Effect.die("workingTreeFile should not run"),
 				},
 			})
 		);
@@ -402,11 +386,9 @@ describe("show Commit Reviews", () => {
 					cwd: "/repo",
 					now: () => new Date("2026-05-08T03:12:00.000Z"),
 					git: {
-						blob: () => Effect.die("should not run"),
 						diff: () => Effect.die("should not run"),
 						showCommit: () => Effect.die("should not run"),
 						repositoryRoot: () => Effect.die("should not run"),
-						workingTreeFile: () => Effect.die("should not run"),
 					},
 				})
 			)
@@ -426,7 +408,6 @@ describe("show Commit Reviews", () => {
 					cwd: "/repo",
 					now: () => new Date("2026-05-08T03:13:00.000Z"),
 					git: {
-						blob: () => Effect.die("should not run"),
 						diff: () => Effect.die("should not run"),
 						showCommit: () =>
 							Effect.fail(
@@ -436,7 +417,6 @@ describe("show Commit Reviews", () => {
 								})
 							),
 						repositoryRoot: () => Effect.die("should not run"),
-						workingTreeFile: () => Effect.die("should not run"),
 					},
 				})
 			)
@@ -456,7 +436,6 @@ describe("show Commit Reviews", () => {
 					cwd: "/repo",
 					now: () => new Date("2026-05-08T03:14:00.000Z"),
 					git: {
-						blob: () => Effect.die("should not run"),
 						diff: () => Effect.die("should not run"),
 						showCommit: () =>
 							Effect.succeed({
@@ -471,7 +450,6 @@ describe("show Commit Reviews", () => {
 								patch: "",
 							}),
 						repositoryRoot: () => Effect.die("should not run"),
-						workingTreeFile: () => Effect.die("should not run"),
 					},
 				})
 			)
