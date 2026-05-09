@@ -1,46 +1,32 @@
-import {
-	type DiffLineAnnotation,
-	type FileDiffOptions,
-	parsePatchFiles,
-	type SelectedLineRange,
-} from "@pierre/diffs";
-import {
-	FileDiff,
-	type FileDiffMetadata,
-	type FileDiffProps,
-} from "@pierre/diffs/react";
+import type { DiffLineAnnotation, FileDiffOptions } from "@pierre/diffs";
+import { FileDiff, type FileDiffProps } from "@pierre/diffs/react";
 import { IconCheckboxFill, IconChevronSm, IconSquircleLg } from "@pierre/icons";
-import { type ComponentType, useEffect, useMemo, useState } from "react";
+import { type ComponentType, useEffect, useState } from "react";
 
 import { formatCommentAnchorLocation } from "./comment-anchor-location";
+import {
+	cancelContinuousDiffViewDraftReviewComment,
+	confirmClearContinuousDiffViewDraftReviewComments,
+	continuousDiffViewDraftReviewCommentCountsByFileKey,
+	continuousDiffViewFileState,
+	continuousDiffViewSelectedLinesForFile,
+	copyContinuousDiffViewReview,
+	createContinuousDiffViewInteraction,
+	deleteContinuousDiffViewDraftReviewComment,
+	markContinuousDiffViewFileViewed,
+	selectContinuousDiffViewLines,
+	submitContinuousDiffViewDraftReviewComment,
+	toggleContinuousDiffViewFileCollapsed,
+} from "./continuous-diff-view-interaction";
 import {
 	reviewSessionEndpoint,
 	reviewSessionShutdownEndpoint,
 } from "./diffuser/protocol";
 import { reviewSessionFromSessionEndpointPayload } from "./diffuser/session-endpoint-payload";
 import type { ReviewSession } from "./diffuser/workflow";
-import {
-	confirmClearDraftReviewComments as confirmClearDraftReviewCommentsPolicy,
-	copyDraftReviewCommentsToClipboard,
-	type DraftReviewCommentCopyClearState,
-} from "./draft-review-comment-copy-clear-policy";
-import {
-	type FileReviewStates,
-	fileDiffKey,
-	getFileReviewState,
-	initialFileReviewStatesFor,
-	markFileViewed,
-	toggleFileCollapsed,
-} from "./file-review-state";
-import {
-	type DraftReviewCommentAnchor,
-	type DraftReviewCommentState,
-	deleteSubmittedDraftReviewComment,
-	draftReviewCommentAnchorForSelection,
-	draftReviewCommentCountByFileKey,
-	emptyDraftReviewCommentState,
-	type SubmittedDraftReviewComment,
-	submitDraftReviewComment,
+import type {
+	DraftReviewCommentAnchor,
+	SubmittedDraftReviewComment,
 } from "./review-comments";
 import "./index.css";
 
@@ -53,7 +39,6 @@ type FetchReviewSession = (
 	init?: Parameters<typeof fetch>[1]
 ) => ReturnType<typeof fetch>;
 
-type ParsedFileDiff = FileDiffMetadata;
 interface DraftReviewCommentAnnotation {
 	readonly anchor?: DraftReviewCommentAnchor;
 	readonly comment?: SubmittedDraftReviewComment;
@@ -76,9 +61,6 @@ export const continuousDiffViewOptions = {
 	diffStyle: "split",
 	hunkSeparators: "line-info-basic",
 } as const satisfies FileDiffOptions<undefined>;
-
-const fileReviewLabel = (fileDiff: ParsedFileDiff) =>
-	fileDiff.name ?? fileDiff.prevName ?? "file";
 
 const draftReviewCommentFormLinePrefix = (anchor: DraftReviewCommentAnchor) =>
 	anchor.side === "old-deleted" ? "L" : "R";
@@ -109,9 +91,6 @@ const draftReviewCommentBodyFromForm = (
 const isDraftReviewCommentSubmitShortcut = (
 	event: Pick<KeyboardEvent, "key" | "metaKey">
 ) => event.key === "Enter" && event.metaKey;
-
-const parsedFileDiffsFor = (patch: string) =>
-	parsePatchFiles(patch).flatMap((parsedPatch) => parsedPatch.files);
 
 interface FileCollapseToggleProps {
 	readonly collapsed: boolean;
@@ -397,95 +376,40 @@ export const ContinuousPatchDiff = ({
 	readonly patch: string;
 	readonly DiffRenderer?: ComponentType<FileDiffRendererProps>;
 }) => {
-	const fileDiffs = useMemo(() => parsedFileDiffsFor(patch), [patch]);
-	const initialFileReviewStates = useMemo(
-		() => initialFileReviewStatesFor(fileDiffs),
-		[fileDiffs]
+	const [interaction, setInteraction] = useState(() =>
+		createContinuousDiffViewInteraction(patch)
 	);
-	const [fileReviewStates, setFileReviewStates] = useState<FileReviewStates>(
-		initialFileReviewStates
-	);
-	const [draftReviewCommentState, setDraftReviewCommentState] =
-		useState<DraftReviewCommentState>(emptyDraftReviewCommentState);
-	const [activeDraftReviewCommentAnchor, setActiveDraftReviewCommentAnchor] =
-		useState<DraftReviewCommentAnchor | undefined>();
-	const [
-		activeDraftReviewCommentSelection,
-		setActiveDraftReviewCommentSelection,
-	] = useState<SelectedLineRange | null>(null);
-	const [copyError, setCopyError] = useState<string | undefined>();
-	const draftReviewCommentCopyClearState = {
-		copyError,
-		draftReviewCommentState,
-	} satisfies DraftReviewCommentCopyClearState;
 	useEffect(() => {
-		setFileReviewStates(initialFileReviewStates);
-		setDraftReviewCommentState(emptyDraftReviewCommentState());
-		setActiveDraftReviewCommentAnchor(undefined);
-		setActiveDraftReviewCommentSelection(null);
-		setCopyError(undefined);
-	}, [initialFileReviewStates]);
-	const submittedComments = draftReviewCommentState.submittedComments;
-	const commentCountsByFileKey = draftReviewCommentCountByFileKey(
-		draftReviewCommentState
-	);
-	const markViewed = (
-		fileDiff: ParsedFileDiff,
-		index: number,
-		viewed: boolean
-	) => {
-		setFileReviewStates((states) =>
-			markFileViewed(states, fileDiff, index, viewed)
-		);
-	};
-	const toggleCollapsed = (fileDiff: ParsedFileDiff, index: number) => {
-		setFileReviewStates((states) =>
-			toggleFileCollapsed(states, fileDiff, index)
-		);
-	};
+		setInteraction(createContinuousDiffViewInteraction(patch));
+	}, [patch]);
+	const submittedComments =
+		interaction.draftReviewCommentState.submittedComments;
+	const commentCountsByFileKey =
+		continuousDiffViewDraftReviewCommentCountsByFileKey(interaction);
 	const cancelDraftReviewCommentForm = () => {
-		setActiveDraftReviewCommentAnchor(undefined);
-		setActiveDraftReviewCommentSelection(null);
+		setInteraction(cancelContinuousDiffViewDraftReviewComment);
 	};
 	const submitActiveDraftReviewComment = (body: string) => {
-		if (activeDraftReviewCommentAnchor === undefined) {
-			return;
-		}
-
-		setDraftReviewCommentState((state) =>
-			submitDraftReviewComment(state, {
-				anchor: activeDraftReviewCommentAnchor,
-				body,
-			})
+		setInteraction((state) =>
+			submitContinuousDiffViewDraftReviewComment(state, body)
 		);
-		cancelDraftReviewCommentForm();
 	};
 	const deleteDraftReviewComment = (commentId: string) => {
-		setDraftReviewCommentState((state) =>
-			deleteSubmittedDraftReviewComment(state, commentId)
+		setInteraction((state) =>
+			deleteContinuousDiffViewDraftReviewComment(state, commentId)
 		);
 	};
-	const applyDraftReviewCommentCopyClearState = (
-		state: DraftReviewCommentCopyClearState
-	) => {
-		setDraftReviewCommentState(state.draftReviewCommentState);
-		setCopyError(state.copyError);
-	};
 	const copyReview = () => {
-		copyDraftReviewCommentsToClipboard(
-			draftReviewCommentCopyClearState,
-			navigator.clipboard
-		).then(applyDraftReviewCommentCopyClearState);
+		copyContinuousDiffViewReview(interaction, navigator.clipboard).then(
+			setInteraction
+		);
 	};
 	const confirmClearDraftReviewComments = () => {
-		applyDraftReviewCommentCopyClearState(
-			confirmClearDraftReviewCommentsPolicy(
-				draftReviewCommentCopyClearState,
-				(message) => {
-					// biome-ignore lint/suspicious/noAlert: The PRD requires the browser confirmation dialog for clearing draft comments.
-					return window.confirm(message);
-				}
-			)
+		setInteraction((state) =>
+			confirmClearContinuousDiffViewDraftReviewComments(state, (message) => {
+				// biome-ignore lint/suspicious/noAlert: The PRD requires the browser confirmation dialog for clearing draft comments.
+				return window.confirm(message);
+			})
 		);
 	};
 	const renderDraftReviewCommentAnnotation = (
@@ -521,23 +445,25 @@ export const ContinuousPatchDiff = ({
 
 	return (
 		<>
-			{fileDiffs.map((fileDiff, index) => {
-				const key = fileDiffKey(fileDiff, index);
-				const fileReviewState = getFileReviewState(
-					fileReviewStates,
-					fileDiff,
-					index
+			{interaction.files.map((file) => {
+				const fileReviewState = continuousDiffViewFileState(
+					interaction,
+					file.key
 				);
-				const label = fileReviewLabel(fileDiff);
-				const fileCommentCount = commentCountsByFileKey[key] ?? 0;
+
+				if (fileReviewState === undefined) {
+					return null;
+				}
+
+				const fileCommentCount = commentCountsByFileKey[file.key] ?? 0;
 
 				return (
 					<DiffRenderer
-						fileDiff={fileDiff}
-						key={key}
+						fileDiff={file.fileDiff}
+						key={file.key}
 						lineAnnotations={draftReviewCommentLineAnnotationsForFile({
-							activeAnchor: activeDraftReviewCommentAnchor,
-							fileKey: key,
+							activeAnchor: interaction.activeDraftReviewCommentAnchor,
+							fileKey: file.key,
 							submittedComments,
 						})}
 						options={{
@@ -545,34 +471,20 @@ export const ContinuousPatchDiff = ({
 							collapsed: fileReviewState.collapsed,
 							enableLineSelection: true,
 							onLineSelected: (selection) => {
-								if (selection === null) {
-									cancelDraftReviewCommentForm();
-									return;
-								}
-								const anchor = draftReviewCommentAnchorForSelection({
-									fileDiff,
-									fileKey: key,
-									fileOrder: index,
-									selection,
-								});
-
-								if (anchor === undefined) {
-									cancelDraftReviewCommentForm();
-									return;
-								}
-
-								setActiveDraftReviewCommentAnchor(anchor);
-								setActiveDraftReviewCommentSelection(selection);
-								setCopyError(undefined);
+								setInteraction((state) =>
+									selectContinuousDiffViewLines(state, file.key, selection)
+								);
 							},
 						}}
 						renderAnnotation={renderDraftReviewCommentAnnotation}
 						renderHeaderMetadata={() => (
 							<FileHeaderMetadata
 								commentCount={fileCommentCount}
-								label={label}
+								label={file.label}
 								onViewedChange={(viewed) => {
-									markViewed(fileDiff, index, viewed);
+									setInteraction((state) =>
+										markContinuousDiffViewFileViewed(state, file.key, viewed)
+									);
 								}}
 								viewed={fileReviewState.viewed}
 							/>
@@ -581,22 +493,23 @@ export const ContinuousPatchDiff = ({
 							<FileCollapseToggle
 								collapsed={fileReviewState.collapsed}
 								onToggle={() => {
-									toggleCollapsed(fileDiff, index);
+									setInteraction((state) =>
+										toggleContinuousDiffViewFileCollapsed(state, file.key)
+									);
 								}}
 							/>
 						)}
-						selectedLines={
-							activeDraftReviewCommentAnchor?.fileKey === key
-								? activeDraftReviewCommentSelection
-								: null
-						}
+						selectedLines={continuousDiffViewSelectedLinesForFile(
+							interaction,
+							file.key
+						)}
 					/>
 				);
 			})}
 			{submittedComments.length > 0 ? (
 				<ReviewCommentToolbar
 					commentCount={submittedComments.length}
-					copyError={copyError}
+					copyError={interaction.copyError}
 					onClear={confirmClearDraftReviewComments}
 					onCopy={copyReview}
 				/>
