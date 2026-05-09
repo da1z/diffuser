@@ -83,6 +83,30 @@ const navigatorPatch = `${patchWithRenderedContextRows(
 	LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD + 1
 )}${patchWithRenderedContextRows("src/target.ts", 1)}`;
 
+const navigatorMetadataPatch = `diff --git a/src/alpha.ts b/src/alpha.ts
+--- a/src/alpha.ts
++++ b/src/alpha.ts
+@@ -1 +1 @@
+-old
++new
+diff --git a/src/beta.ts b/src/beta.ts
+new file mode 100644
+--- /dev/null
++++ b/src/beta.ts
+@@ -0,0 +1 @@
++created
+diff --git a/src/gamma.ts b/src/gamma.ts
+deleted file mode 100644
+--- a/src/gamma.ts
++++ /dev/null
+@@ -1 +0,0 @@
+-removed
+diff --git a/old-name.ts b/src/delta.ts
+similarity index 100%
+rename from old-name.ts
+rename to src/delta.ts
+`;
+
 const reviewSession = (
 	overrides: Partial<ReviewSession> = {}
 ): ReviewSession => ({
@@ -218,7 +242,7 @@ const fileHeaderMetadataFor = (
 		".file-header-metadata"
 	);
 
-const patchNavigatorFileRowFor = (container: Element, path: string) => {
+const patchNavigatorRowFor = (container: Element, path: string) => {
 	const navigator = container.querySelector<HTMLElement>(
 		'[aria-label="Patch File Navigator"]'
 	);
@@ -231,6 +255,9 @@ const patchNavigatorFileRowFor = (container: Element, path: string) => {
 		).find((row) => row.getAttribute("data-item-path") === path) ?? null
 	);
 };
+
+const patchNavigatorFileRowFor = (container: Element, path: string) =>
+	patchNavigatorRowFor(container, path);
 
 const stubScrollIntoView = (
 	scrollIntoView: typeof window.HTMLElement.prototype.scrollIntoView
@@ -1293,11 +1320,70 @@ test("shows renamed files in the Patch File Navigator with previous-path context
 
 	expect(renamedRow).not.toBeNull();
 	expect(patchNavigatorFileRowFor(container, "old-name.txt")).toBeNull();
-	expect(renamedRow?.getAttribute("data-item-git-status")).toBe("renamed");
 	expect(renamedRow?.textContent).toContain("renamed");
 	expect(
 		renamedRow?.querySelector('[title="Renamed from old-name.txt"]')
 	).not.toBeNull();
+
+	act(() => {
+		root.unmount();
+	});
+});
+
+test("shows Patch File Navigator review badges only on file rows", async () => {
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={navigatorMetadataPatch}
+		/>
+	);
+
+	await act(async () => {
+		await Promise.resolve();
+	});
+
+	const modifiedRow = () => patchNavigatorFileRowFor(container, "src/alpha.ts");
+	const createdRow = () => patchNavigatorFileRowFor(container, "src/beta.ts");
+	const removedRow = () => patchNavigatorFileRowFor(container, "src/gamma.ts");
+	const renamedRow = () => patchNavigatorFileRowFor(container, "src/delta.ts");
+	const folderRow = () => patchNavigatorRowFor(container, "src/");
+	const modifiedViewed = () => viewedControlFor(container, "src/alpha.ts");
+	const createdCollapseToggle = () =>
+		fileCollapseToggleFor(container, "src/beta.ts");
+
+	expect(modifiedRow()?.textContent).toContain("modified");
+	expect(createdRow()?.textContent).toContain("added");
+	expect(removedRow()?.textContent).toContain("deleted");
+	expect(renamedRow()?.textContent).toContain("renamed");
+	expect(
+		renamedRow()?.querySelector('[title="Renamed from old-name.ts"]')
+	).not.toBeNull();
+	expect(folderRow()).not.toBeNull();
+	expect(folderRow()?.textContent).not.toContain("modified");
+	expect(folderRow()?.textContent).not.toContain("added");
+	expect(folderRow()?.textContent).not.toContain("deleted");
+	expect(folderRow()?.textContent).not.toContain("renamed");
+
+	submitDraftReviewComment(
+		container,
+		"Navigator should count submitted comments.",
+		{
+			fileName: "src/alpha.ts",
+		}
+	);
+
+	expect(modifiedRow()?.textContent).toContain("1 comment");
+	expect(folderRow()?.textContent).not.toContain("1 comment");
+
+	act(() => {
+		modifiedViewed()?.click();
+		createdCollapseToggle()?.click();
+	});
+
+	expect(modifiedRow()?.textContent).toContain("Viewed");
+	expect(createdRow()?.textContent).not.toContain("collapsed");
+	expect(folderRow()?.textContent).not.toContain("Viewed");
+	expect(folderRow()?.textContent).not.toContain("collapsed");
 
 	act(() => {
 		root.unmount();

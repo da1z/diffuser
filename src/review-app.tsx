@@ -31,7 +31,10 @@ import {
 import { reviewSessionFromSessionEndpointPayload } from "./diffuser/session-endpoint-payload";
 import type { ReviewSession } from "./diffuser/workflow";
 import { patchFileNavigatorModelFor } from "./patch-file-navigator";
-import { PatchFileNavigatorSidebar } from "./patch-file-navigator-view";
+import {
+	type PatchFileNavigatorFileMetadataByKey,
+	PatchFileNavigatorSidebar,
+} from "./patch-file-navigator-view";
 import type {
 	DraftReviewCommentAnchor,
 	SubmittedDraftReviewComment,
@@ -413,6 +416,22 @@ export const ContinuousPatchDiff = ({
 		interaction.draftReviewCommentState.submittedComments;
 	const commentCountsByFileKey =
 		continuousDiffViewDraftReviewCommentCountsByFileKey(interaction);
+	const navigatorFileMetadataByKey = Object.fromEntries(
+		interaction.files.map((file) => {
+			const fileReviewState = continuousDiffViewFileState(
+				interaction,
+				file.key
+			);
+
+			return [
+				file.key,
+				{
+					commentCount: commentCountsByFileKey[file.key] ?? 0,
+					viewed: fileReviewState?.viewed ?? false,
+				},
+			];
+		})
+	) satisfies PatchFileNavigatorFileMetadataByKey;
 	const cancelDraftReviewCommentForm = () => {
 		setInteraction(cancelContinuousDiffViewDraftReviewComment);
 	};
@@ -488,6 +507,7 @@ export const ContinuousPatchDiff = ({
 	return (
 		<>
 			<PatchFileNavigatorSidebar
+				fileMetadataByKey={navigatorFileMetadataByKey}
 				model={navigatorModel}
 				onSelectFileKey={selectNavigatorFileKey}
 			/>

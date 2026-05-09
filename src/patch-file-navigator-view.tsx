@@ -1,4 +1,3 @@
-import type { GitStatusEntry } from "@pierre/trees";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 
 import type {
@@ -7,42 +6,78 @@ import type {
 } from "./patch-file-navigator";
 
 interface PatchFileNavigatorProps {
+	readonly fileMetadataByKey: PatchFileNavigatorFileMetadataByKey;
 	readonly model: PatchFileNavigatorModel;
 	readonly onSelectFileKey: (fileKey: string) => void;
 }
 
-const patchFileNavigatorTreeKeyFor = (model: PatchFileNavigatorModel) =>
-	model.treePaths.join("\0");
+export interface PatchFileNavigatorFileMetadata {
+	readonly commentCount: number;
+	readonly viewed: boolean;
+}
 
-const patchFileNavigatorGitStatusFor = (
+export type PatchFileNavigatorFileMetadataByKey = Readonly<
+	Record<string, PatchFileNavigatorFileMetadata>
+>;
+
+const patchFileNavigatorChangeTypeLabelFor = (
 	entry: PatchFileNavigatorEntry
-): GitStatusEntry | undefined => {
+): string | undefined => {
 	switch (entry.changeType) {
 		case "change":
-			return { path: entry.treePath, status: "modified" };
+			return "modified";
 		case "deleted":
-			return { path: entry.treePath, status: "deleted" };
+			return "deleted";
 		case "new":
-			return { path: entry.treePath, status: "added" };
+			return "added";
 		case "rename-changed":
 		case "rename-pure":
-			return { path: entry.treePath, status: "renamed" };
+			return "renamed";
 		default:
 			return;
 	}
 };
 
+const patchFileNavigatorReviewBadgeTextFor = (
+	entry: PatchFileNavigatorEntry,
+	metadata: PatchFileNavigatorFileMetadata | undefined
+) => {
+	const badges = [
+		metadata?.viewed === true ? "Viewed" : undefined,
+		metadata !== undefined && metadata.commentCount > 0
+			? `${metadata.commentCount} ${
+					metadata.commentCount === 1 ? "comment" : "comments"
+				}`
+			: undefined,
+		patchFileNavigatorChangeTypeLabelFor(entry),
+	].filter((badge) => badge !== undefined);
+
+	return badges.length === 0 ? undefined : badges.join(" | ");
+};
+
+const patchFileNavigatorTreeKeyFor = (
+	model: PatchFileNavigatorModel,
+	fileMetadataByKey: PatchFileNavigatorFileMetadataByKey
+) =>
+	model.entries
+		.map((entry) =>
+			[
+				entry.treePath,
+				patchFileNavigatorReviewBadgeTextFor(
+					entry,
+					fileMetadataByKey[entry.fileKey]
+				),
+			].join("\0")
+		)
+		.join("\0\0");
+
 const PatchFileNavigatorTree = ({
+	fileMetadataByKey,
 	model,
 	onSelectFileKey,
 }: PatchFileNavigatorProps) => {
 	const { model: treeModel } = useFileTree({
 		flattenEmptyDirectories: true,
-		gitStatus: model.entries.flatMap((entry) => {
-			const gitStatus = patchFileNavigatorGitStatusFor(entry);
-
-			return gitStatus === undefined ? [] : [gitStatus];
-		}),
 		initialExpansion: "open",
 		initialVisibleRowCount: 24,
 		onSelectionChange: (selectedPaths) => {
@@ -59,13 +94,24 @@ const PatchFileNavigatorTree = ({
 		paths: model.treePaths,
 		renderRowDecoration: ({ item }) => {
 			const entry = model.entryForTreePath(item.path);
-
-			if (entry?.previousPath === undefined) {
+			if (entry === undefined) {
 				return null;
 			}
 
+			const text = patchFileNavigatorReviewBadgeTextFor(
+				entry,
+				fileMetadataByKey[entry.fileKey]
+			);
+			if (text === undefined) {
+				return null;
+			}
+
+			if (entry.previousPath === undefined) {
+				return { text };
+			}
+
 			return {
-				text: "renamed",
+				text,
 				title: `Renamed from ${entry.previousPath}`,
 			};
 		},
@@ -81,6 +127,7 @@ const PatchFileNavigatorTree = ({
 };
 
 export const PatchFileNavigatorSidebar = ({
+	fileMetadataByKey,
 	model,
 	onSelectFileKey,
 }: PatchFileNavigatorProps) => (
@@ -95,7 +142,8 @@ export const PatchFileNavigatorSidebar = ({
 			Patch Files
 		</h2>
 		<PatchFileNavigatorTree
-			key={patchFileNavigatorTreeKeyFor(model)}
+			fileMetadataByKey={fileMetadataByKey}
+			key={patchFileNavigatorTreeKeyFor(model, fileMetadataByKey)}
 			model={model}
 			onSelectFileKey={onSelectFileKey}
 		/>
