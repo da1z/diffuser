@@ -82,16 +82,21 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     promptFile: "./.sandcastle/plan-prompt.md",
   });
 
-  // Extract the <plan>…</plan> block from the agent's stdout.
-  const planMatch = plan.stdout.match(/<plan>([\s\S]*?)<\/plan>/);
-  if (!planMatch) {
+  // Extract the last <plan>...</plan> block from the agent's stdout.
+  const planStart = plan.stdout.lastIndexOf("<plan>");
+  const planEnd =
+    planStart === -1 ? -1 : plan.stdout.indexOf("</plan>", planStart);
+  if (planStart === -1 || planEnd === -1) {
     throw new Error(
       "Planning agent did not produce a <plan> tag.\n\n" + plan.stdout,
     );
   }
+  const planJson = plan.stdout
+    .slice(planStart + "<plan>".length, planEnd)
+    .trim();
 
   // The plan JSON contains an array of issues, each with id, title, branch.
-  const { issues } = JSON.parse(planMatch[1]!) as {
+  const { issues } = JSON.parse(planJson) as {
     issues: { id: string; title: string; branch: string }[];
   };
 
