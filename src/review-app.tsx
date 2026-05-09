@@ -11,6 +11,7 @@ import {
 
 import { formatCommentAnchorLocation } from "./comment-anchor-location";
 import {
+	type ContinuousDiffViewInteraction,
 	cancelContinuousDiffViewDraftReviewComment,
 	confirmClearContinuousDiffViewDraftReviewComments,
 	continuousDiffViewDraftReviewCommentCountsByFileKey,
@@ -85,6 +86,27 @@ const draftReviewCommentFormTitle = (anchor: DraftReviewCommentAnchor) => {
 
 	return `Add a comment on lines ${linePrefix}${anchor.startLine} to ${linePrefix}${anchor.endLine}`;
 };
+
+const patchFileNavigatorFileMetadataByKeyFor = (
+	interaction: ContinuousDiffViewInteraction,
+	commentCountsByFileKey: Readonly<Record<string, number>>
+): PatchFileNavigatorFileMetadataByKey =>
+	Object.fromEntries(
+		interaction.files.map((file) => {
+			const fileReviewState = continuousDiffViewFileState(
+				interaction,
+				file.key
+			);
+
+			return [
+				file.key,
+				{
+					commentCount: commentCountsByFileKey[file.key] ?? 0,
+					viewed: fileReviewState?.viewed ?? false,
+				},
+			];
+		})
+	);
 
 const draftReviewCommentBodyFromForm = (
 	form: HTMLFormElement | null,
@@ -416,22 +438,10 @@ export const ContinuousPatchDiff = ({
 		interaction.draftReviewCommentState.submittedComments;
 	const commentCountsByFileKey =
 		continuousDiffViewDraftReviewCommentCountsByFileKey(interaction);
-	const navigatorFileMetadataByKey = Object.fromEntries(
-		interaction.files.map((file) => {
-			const fileReviewState = continuousDiffViewFileState(
-				interaction,
-				file.key
-			);
-
-			return [
-				file.key,
-				{
-					commentCount: commentCountsByFileKey[file.key] ?? 0,
-					viewed: fileReviewState?.viewed ?? false,
-				},
-			];
-		})
-	) satisfies PatchFileNavigatorFileMetadataByKey;
+	const navigatorFileMetadataByKey = patchFileNavigatorFileMetadataByKeyFor(
+		interaction,
+		commentCountsByFileKey
+	);
 	const cancelDraftReviewCommentForm = () => {
 		setInteraction(cancelContinuousDiffViewDraftReviewComment);
 	};

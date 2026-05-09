@@ -20,6 +20,11 @@ export type PatchFileNavigatorFileMetadataByKey = Readonly<
 	Record<string, PatchFileNavigatorFileMetadata>
 >;
 
+interface PatchFileNavigatorRowDecoration {
+	readonly text: string;
+	readonly title?: string;
+}
+
 const patchFileNavigatorChangeTypeLabelFor = (
 	entry: PatchFileNavigatorEntry
 ): string | undefined => {
@@ -38,21 +43,48 @@ const patchFileNavigatorChangeTypeLabelFor = (
 	}
 };
 
+const patchFileNavigatorCommentCountLabelFor = (commentCount: number) => {
+	if (commentCount <= 0) {
+		return;
+	}
+
+	if (commentCount === 1) {
+		return "1 comment";
+	}
+
+	return `${commentCount} comments`;
+};
+
 const patchFileNavigatorReviewBadgeTextFor = (
 	entry: PatchFileNavigatorEntry,
 	metadata: PatchFileNavigatorFileMetadata | undefined
 ) => {
 	const badges = [
 		metadata?.viewed === true ? "Viewed" : undefined,
-		metadata !== undefined && metadata.commentCount > 0
-			? `${metadata.commentCount} ${
-					metadata.commentCount === 1 ? "comment" : "comments"
-				}`
-			: undefined,
+		patchFileNavigatorCommentCountLabelFor(metadata?.commentCount ?? 0),
 		patchFileNavigatorChangeTypeLabelFor(entry),
 	].filter((badge) => badge !== undefined);
 
 	return badges.length === 0 ? undefined : badges.join(" | ");
+};
+
+const patchFileNavigatorRowDecorationFor = (
+	entry: PatchFileNavigatorEntry,
+	metadata: PatchFileNavigatorFileMetadata | undefined
+): PatchFileNavigatorRowDecoration | null => {
+	const text = patchFileNavigatorReviewBadgeTextFor(entry, metadata);
+	if (text === undefined) {
+		return null;
+	}
+
+	if (entry.previousPath === undefined) {
+		return { text };
+	}
+
+	return {
+		text,
+		title: `Renamed from ${entry.previousPath}`,
+	};
 };
 
 const patchFileNavigatorTreeKeyFor = (
@@ -98,22 +130,10 @@ const PatchFileNavigatorTree = ({
 				return null;
 			}
 
-			const text = patchFileNavigatorReviewBadgeTextFor(
+			return patchFileNavigatorRowDecorationFor(
 				entry,
 				fileMetadataByKey[entry.fileKey]
 			);
-			if (text === undefined) {
-				return null;
-			}
-
-			if (entry.previousPath === undefined) {
-				return { text };
-			}
-
-			return {
-				text,
-				title: `Renamed from ${entry.previousPath}`,
-			};
 		},
 	});
 

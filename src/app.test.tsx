@@ -256,8 +256,11 @@ const patchNavigatorRowFor = (container: Element, path: string) => {
 	);
 };
 
-const patchNavigatorFileRowFor = (container: Element, path: string) =>
-	patchNavigatorRowFor(container, path);
+const patchNavigatorFileRowFor = (container: Element, path: string) => {
+	const row = patchNavigatorRowFor(container, path);
+
+	return row?.getAttribute("data-item-type") === "file" ? row : null;
+};
 
 const stubScrollIntoView = (
 	scrollIntoView: typeof window.HTMLElement.prototype.scrollIntoView
