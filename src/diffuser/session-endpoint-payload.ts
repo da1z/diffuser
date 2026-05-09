@@ -9,22 +9,6 @@ export interface CommitMetadataPayload {
 	readonly subject: string;
 }
 
-interface DiffFilePayload {
-	readonly contents: string;
-	readonly name: string;
-}
-
-export type DiffFileSnapshotPayload =
-	| {
-			readonly newFile: DiffFilePayload;
-			readonly oldFile: DiffFilePayload;
-			readonly status: "available";
-	  }
-	| {
-			readonly reason: string;
-			readonly status: "unavailable";
-	  };
-
 interface RepositoryContextPayload {
 	readonly root: string;
 	readonly workingDirectory: string;
@@ -40,7 +24,6 @@ interface SessionEndpointContextPayload {
 
 export interface SessionEndpointPayload {
 	readonly context: SessionEndpointContextPayload;
-	readonly diffFileSnapshots: readonly DiffFileSnapshotPayload[];
 	readonly id: string;
 	readonly kind: "diff" | "show";
 	readonly mode: "read-only";
@@ -78,29 +61,6 @@ const isCommitMetadataPayload = (
 	);
 };
 
-const isDiffFilePayload = (value: unknown): value is DiffFilePayload =>
-	isRecord(value) &&
-	typeof value.name === "string" &&
-	typeof value.contents === "string";
-
-const isDiffFileSnapshotPayload = (
-	value: unknown
-): value is DiffFileSnapshotPayload => {
-	if (!isRecord(value)) {
-		return false;
-	}
-
-	if (value.status === "unavailable") {
-		return typeof value.reason === "string";
-	}
-
-	return (
-		value.status === "available" &&
-		isDiffFilePayload(value.oldFile) &&
-		isDiffFilePayload(value.newFile)
-	);
-};
-
 const isRepositoryContextPayload = (
 	value: unknown
 ): value is RepositoryContextPayload =>
@@ -130,8 +90,6 @@ const isSessionEndpointPayload = (
 		value.mode === "read-only" &&
 		isSessionKind(value.kind) &&
 		typeof value.patch === "string" &&
-		Array.isArray(value.diffFileSnapshots) &&
-		value.diffFileSnapshots.every(isDiffFileSnapshotPayload) &&
 		isSessionEndpointContextPayload(value.context)
 	);
 };
@@ -143,7 +101,6 @@ export const sessionEndpointPayloadFromReviewSession = (
 	mode: session.mode,
 	kind: session.kind,
 	patch: session.patch,
-	diffFileSnapshots: session.diffFileSnapshots,
 	context: {
 		command: session.context.command,
 		args: session.context.args,
@@ -181,7 +138,6 @@ export const reviewSessionFromSessionEndpointPayload = (
 		mode: payload.mode,
 		kind: payload.kind,
 		patch: payload.patch,
-		diffFileSnapshots: payload.diffFileSnapshots,
 		context: {
 			command: payload.context.command,
 			args: payload.context.args,

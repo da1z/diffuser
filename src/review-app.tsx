@@ -1,7 +1,7 @@
 import {
 	type DiffLineAnnotation,
 	type FileDiffOptions,
-	processFile,
+	parsePatchFiles,
 	type SelectedLineRange,
 } from "@pierre/diffs";
 import {
@@ -12,13 +12,12 @@ import {
 import { type ComponentType, useEffect, useMemo, useState } from "react";
 
 import { formatCommentAnchorLocation } from "./comment-anchor-location";
-import { alignPatchFileEntries } from "./diffuser/patch-file-entries";
 import {
 	reviewSessionEndpoint,
 	reviewSessionShutdownEndpoint,
 } from "./diffuser/protocol";
 import { reviewSessionFromSessionEndpointPayload } from "./diffuser/session-endpoint-payload";
-import type { DiffFileSnapshot, ReviewSession } from "./diffuser/workflow";
+import type { ReviewSession } from "./diffuser/workflow";
 import {
 	confirmClearDraftReviewComments as confirmClearDraftReviewCommentsPolicy,
 	copyDraftReviewCommentsToClipboard,
@@ -78,7 +77,6 @@ export const continuousDiffViewOptions = {
 	hunkSeparators: "line-info-basic",
 } as const satisfies FileDiffOptions<undefined>;
 
-const emptyDiffFileSnapshots: readonly DiffFileSnapshot[] = [];
 const fileReviewLabel = (fileDiff: ParsedFileDiff) =>
 	fileDiff.name ?? fileDiff.prevName ?? "file";
 
@@ -112,40 +110,8 @@ const isDraftReviewCommentSubmitShortcut = (
 	event: Pick<KeyboardEvent, "key" | "metaKey">
 ) => event.key === "Enter" && event.metaKey;
 
-const enrichFileDiffWithSnapshot = ({
-	fileDiff,
-	patchFileEntry,
-	snapshot,
-}: {
-	readonly fileDiff: ParsedFileDiff;
-	readonly patchFileEntry: string | undefined;
-	readonly snapshot: DiffFileSnapshot | undefined;
-}) => {
-	if (snapshot?.status !== "available" || patchFileEntry === undefined) {
-		return fileDiff;
-	}
-
-	return (
-		processFile(patchFileEntry, {
-			isGitDiff: true,
-			oldFile: snapshot.oldFile,
-			newFile: snapshot.newFile,
-		}) ?? fileDiff
-	);
-};
-
-const parsedFileDiffsFor = (
-	patch: string,
-	diffFileSnapshots: readonly DiffFileSnapshot[]
-) =>
-	alignPatchFileEntries({ patch, snapshots: diffFileSnapshots }).map(
-		({ fileDiff, patchFileEntry, snapshot }) =>
-			enrichFileDiffWithSnapshot({
-				fileDiff,
-				patchFileEntry,
-				snapshot,
-			})
-	);
+const parsedFileDiffsFor = (patch: string) =>
+	parsePatchFiles(patch).flatMap((parsedPatch) => parsedPatch.files);
 
 interface FileCollapseToggleProps {
 	readonly collapsed: boolean;
@@ -452,18 +418,13 @@ const notifyReviewSessionPageHidden = () => {
 };
 
 export const ContinuousPatchDiff = ({
-	diffFileSnapshots = emptyDiffFileSnapshots,
 	patch,
 	DiffRenderer = FileDiff,
 }: {
-	readonly diffFileSnapshots?: readonly DiffFileSnapshot[];
 	readonly patch: string;
 	readonly DiffRenderer?: ComponentType<FileDiffRendererProps>;
 }) => {
-	const fileDiffs = useMemo(
-		() => parsedFileDiffsFor(patch, diffFileSnapshots),
-		[patch, diffFileSnapshots]
-	);
+	const fileDiffs = useMemo(() => parsedFileDiffsFor(patch), [patch]);
 	const initialFileReviewStates = useMemo(
 		() => initialFileReviewStatesFor(fileDiffs),
 		[fileDiffs]
@@ -705,10 +666,7 @@ const ReviewSessionView = ({
 	<main className="review-app">
 		<ReviewHeader context={session.context} />
 		<section aria-label="Patch" className="review-patch">
-			<ContinuousPatchDiff
-				diffFileSnapshots={session.diffFileSnapshots}
-				patch={session.patch}
-			/>
+			<ContinuousPatchDiff patch={session.patch} />
 		</section>
 	</main>
 );

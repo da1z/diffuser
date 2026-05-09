@@ -1,8 +1,5 @@
-import type { FileDiffMetadata } from "@pierre/diffs";
 import { $, file } from "bun";
 import { Data, Effect } from "effect";
-
-import { parsePatchFileEntries } from "./patch-file-entries";
 
 export type DiffuserCommand =
 	| {
@@ -62,23 +59,6 @@ export interface GitAdapter {
 	}) => Effect.Effect<GitResult, GitError>;
 }
 
-export type DiffFileSnapshot =
-	| {
-			readonly newFile: {
-				readonly contents: string;
-				readonly name: string;
-			};
-			readonly oldFile: {
-				readonly contents: string;
-				readonly name: string;
-			};
-			readonly status: "available";
-	  }
-	| {
-			readonly reason: string;
-			readonly status: "unavailable";
-	  };
-
 export interface ReviewSession {
 	readonly context: {
 		readonly args: readonly string[];
@@ -90,7 +70,6 @@ export interface ReviewSession {
 			readonly workingDirectory: string;
 		};
 	};
-	readonly diffFileSnapshots: readonly DiffFileSnapshot[];
 	readonly id: string;
 	readonly kind: "diff" | "show";
 	readonly mode: "read-only";
@@ -299,189 +278,6 @@ export const bunGitAdapter: GitAdapter = {
 		}),
 };
 
-const nullObjectIdPattern = /^0+$/;
-
-const hasUsableObjectId = (objectId: string | undefined): objectId is string =>
-	objectId !== undefined && !nullObjectIdPattern.test(objectId);
-
-const requireText = (
-	text: string,
-	source: string
-): Effect.Effect<string, GitError> =>
-	text.includes("\0")
-		? Effect.fail(new GitError({ message: `${source} is not a text file` }))
-		: Effect.succeed(text);
-
-const readBlobText = ({
-	cwd,
-	git,
-	objectId,
-}: {
-	readonly cwd: string;
-	readonly git: GitAdapter;
-	readonly objectId: string;
-}) =>
-	Effect.flatMap(git.blob({ cwd, objectId }), ({ stdout }) =>
-		requireText(stdout, `Git blob ${objectId}`)
-	);
-
-const readWorkingTreeText = ({
-	cwd,
-	git,
-	path,
-}: {
-	readonly cwd: string;
-	readonly git: GitAdapter;
-	readonly path: string;
-}) =>
-	Effect.flatMap(git.workingTreeFile({ cwd, path }), ({ stdout }) =>
-		requireText(stdout, path)
-	);
-
-const missingSnapshot = (reason: string): DiffFileSnapshot => ({
-	status: "unavailable",
-	reason,
-});
-
-const availableSnapshot = ({
-	newName,
-	newText,
-	oldName,
-	oldText,
-}: {
-	readonly newName: string;
-	readonly newText: string;
-	readonly oldName: string;
-	readonly oldText: string;
-}): DiffFileSnapshot => ({
-	status: "available",
-	oldFile: { name: oldName, contents: oldText },
-	newFile: { name: newName, contents: newText },
-});
-
-const readSnapshotOldText = ({
-	cwd,
-	fileDiff,
-	git,
-}: {
-	readonly cwd: string;
-	readonly fileDiff: FileDiffMetadata;
-	readonly git: GitAdapter;
-}) => {
-	if (fileDiff.type === "new") {
-		return Effect.succeed("");
-	}
-
-	const prevObjectId = fileDiff.prevObjectId;
-
-	return hasUsableObjectId(prevObjectId)
-		? readBlobText({ cwd, git, objectId: prevObjectId })
-		: Effect.fail(
-				new GitError({ message: "Previous file content is unavailable" })
-			);
-};
-
-const readSnapshotNewText = ({
-	allowWorkingTreeFallback,
-	cwd,
-	fileDiff,
-	git,
-	repositoryRoot,
-}: {
-	readonly allowWorkingTreeFallback: boolean;
-	readonly cwd: string;
-	readonly fileDiff: FileDiffMetadata;
-	readonly git: GitAdapter;
-	readonly repositoryRoot: string;
-}) => {
-	if (fileDiff.type === "deleted") {
-		return Effect.succeed("");
-	}
-
-	const readWorkingTreeFallback = () =>
-		allowWorkingTreeFallback
-			? readWorkingTreeText({ cwd: repositoryRoot, git, path: fileDiff.name })
-			: Effect.fail(
-					new GitError({ message: "New file content is unavailable" })
-				);
-
-	const newObjectId = fileDiff.newObjectId;
-
-	return hasUsableObjectId(newObjectId)
-		? Effect.catchAll(
-				readBlobText({ cwd, git, objectId: newObjectId }),
-				readWorkingTreeFallback
-			)
-		: readWorkingTreeFallback();
-};
-
-const createDiffFileSnapshot = ({
-	allowWorkingTreeFallback,
-	cwd,
-	fileDiff,
-	git,
-	repositoryRoot,
-}: {
-	readonly allowWorkingTreeFallback: boolean;
-	readonly cwd: string;
-	readonly fileDiff: FileDiffMetadata;
-	readonly git: GitAdapter;
-	readonly repositoryRoot: string;
-}): Effect.Effect<DiffFileSnapshot> => {
-	if (fileDiff.hunks.length === 0) {
-		return Effect.succeed(
-			missingSnapshot("Patch file entry has no text hunks.")
-		);
-	}
-
-	return Effect.catchAll(
-		Effect.gen(function* () {
-			const oldText = yield* readSnapshotOldText({ cwd, fileDiff, git });
-			const newText = yield* readSnapshotNewText({
-				allowWorkingTreeFallback,
-				cwd,
-				fileDiff,
-				git,
-				repositoryRoot,
-			});
-
-			return availableSnapshot({
-				oldName: fileDiff.prevName ?? fileDiff.name,
-				newName: fileDiff.name,
-				oldText,
-				newText,
-			});
-		}),
-		(error) => Effect.succeed(missingSnapshot(error.message))
-	);
-};
-
-const createDiffFileSnapshots = ({
-	allowWorkingTreeFallback,
-	cwd,
-	git,
-	patch,
-	repositoryRoot,
-}: {
-	readonly allowWorkingTreeFallback: boolean;
-	readonly cwd: string;
-	readonly git: GitAdapter;
-	readonly patch: string;
-	readonly repositoryRoot: string;
-}) =>
-	Effect.all(
-		parsePatchFileEntries(patch).map(({ fileDiff }) =>
-			createDiffFileSnapshot({
-				allowWorkingTreeFallback,
-				cwd,
-				fileDiff,
-				git,
-				repositoryRoot,
-			})
-		),
-		{ concurrency: 1 }
-	);
-
 const createDiffSessionFromCommand = ({
 	command,
 	cwd,
@@ -499,20 +295,12 @@ const createDiffSessionFromCommand = ({
 
 		const repositoryRoot = yield* git.repositoryRoot({ cwd });
 		const capturedAt = now().toISOString();
-		const diffFileSnapshots = yield* createDiffFileSnapshots({
-			allowWorkingTreeFallback: true,
-			cwd,
-			git,
-			patch,
-			repositoryRoot,
-		});
 
 		return {
 			id: `diff-${capturedAt}`,
 			mode: "read-only",
 			kind: "diff",
 			patch,
-			diffFileSnapshots,
 			context: {
 				command: formatDiffCommand(command.gitArgs),
 				args: command.gitArgs,
@@ -574,20 +362,12 @@ const createShowSessionFromCommand = ({
 		const repositoryRoot = yield* git.repositoryRoot({ cwd });
 		const capturedAt = now().toISOString();
 		const args = formatShowArgs(commitish, pathspec);
-		const diffFileSnapshots = yield* createDiffFileSnapshots({
-			allowWorkingTreeFallback: false,
-			cwd,
-			git,
-			patch,
-			repositoryRoot,
-		});
 
 		return {
 			id: `show-${capturedAt}`,
 			mode: "read-only",
 			kind: "show",
 			patch,
-			diffFileSnapshots,
 			context: {
 				command: formatShowCommand(commitish, pathspec),
 				args,

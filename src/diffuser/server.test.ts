@@ -17,7 +17,6 @@ const session: ReviewSession = {
 	mode: "read-only",
 	kind: "diff",
 	patch: "diff --git a/file.txt b/file.txt\n",
-	diffFileSnapshots: [],
 	context: {
 		command: "diffuser diff",
 		args: [],
@@ -46,8 +45,10 @@ test("serves the captured Review Session through a read-only endpoint", async ()
 		const sessionResponse = await fetch(
 			new URL(reviewSessionEndpoint, server.url)
 		);
+		const payload = await sessionResponse.json();
 		expect(sessionResponse.status).toBe(200);
-		expect(await sessionResponse.json()).toEqual(expectedPayload);
+		expect(payload).toEqual(expectedPayload);
+		expect(payload).not.toHaveProperty("diffFileSnapshots");
 
 		const mutationResponse = await fetch(
 			new URL(reviewSessionEndpoint, server.url),
