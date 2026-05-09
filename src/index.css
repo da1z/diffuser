@@ -5,45 +5,59 @@ body {
 	font-family:
 		Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
 		"Segoe UI", sans-serif;
-	color: #0f172a;
-	background: #f8fafc;
+	-webkit-font-smoothing: antialiased;
+	color: #fafafa;
+	color-scheme: dark;
+	background:
+		radial-gradient(circle at top left, rgb(240 81 56 / 14%), transparent 32rem),
+		#09090b;
 }
 
 .review-app {
+	--diffs-dark-bg: #09090b;
+	--diffs-dark: #fafafa;
+	--diffs-font-family:
+		"SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 	box-sizing: border-box;
 	width: 100%;
-	padding: 24px;
+	min-height: 100dvh;
+	padding: 32px 20px 48px;
 }
 
 .review-header {
-	max-width: 1200px;
-	padding: 20px;
-	margin: 0 auto 24px;
-	background: white;
-	border: 1px solid #e2e8f0;
-	border-radius: 12px;
+	max-width: 768px;
+	padding: 0;
+	margin: 0 0 16px;
+	color: #fafafa;
 }
 
 .review-patch {
+	display: flex;
+	flex-direction: column;
+	gap: 18px;
 	width: 100%;
 	min-width: 0;
 }
 
+.review-patch > diffs-container {
+	display: block;
+	overflow: hidden;
+	background: var(--diffs-bg);
+	border: 1px solid rgb(38 38 38);
+	border-radius: 8px;
+	box-shadow: 0 24px 80px rgb(0 0 0 / 20%);
+}
+
+.review-patch [data-diffs-header] {
+	border-bottom: 1px solid rgb(255 255 255 / 8%);
+}
+
 .review-header h1 {
-	margin: 4px 0 12px;
-	font-size: 24px;
-}
-
-.review-header p {
-	margin: 4px 0;
-}
-
-.eyebrow {
-	font-size: 12px;
-	font-weight: 700;
-	color: #475569;
-	text-transform: uppercase;
-	letter-spacing: 0.08em;
+	margin: 0;
+	font-size: 18px;
+	font-weight: 500;
+	line-height: 1.35;
+	letter-spacing: -0.03em;
 }
 
 .file-header-metadata {
@@ -58,41 +72,58 @@ body {
 .draft-review-comment-file-count {
 	display: inline-flex;
 	align-items: center;
-	padding: 4px 8px;
-	font-size: 12px;
-	font-weight: 700;
-	color: #1e3a8a;
-	background: #dbeafe;
-	border-radius: 999px;
+	padding: 2px 8px;
+	font-size: 11px;
+	font-weight: 500;
+	color: var(--diffs-addition-base);
+	background: var(--diffs-bg-addition);
+	border-radius: 6px;
 }
 
 .draft-review-comment-form,
 .draft-review-comment {
 	padding: 12px;
 	margin: 8px 0;
-	color: #0f172a;
-	background: #eff6ff;
-	border: 1px solid #bfdbfe;
+	color: #fafafa;
+	background: rgb(255 255 255 / 6%);
+	border: 1px solid rgb(255 255 255 / 12%);
 	border-radius: 10px;
 }
 
 .draft-review-comment-title {
 	margin: 0 0 8px;
 	font-size: 14px;
-	font-weight: 700;
-	color: #1e3a8a;
+	font-weight: 500;
+	color: #e4e4e7;
+}
+
+.draft-review-comment-location {
+	margin-bottom: 8px;
+	font-size: 12px;
+	color: #a1a1aa;
 }
 
 .draft-review-comment-form textarea {
 	box-sizing: border-box;
 	width: 100%;
 	min-height: 80px;
-	padding: 8px;
+	padding: 10px;
 	font: inherit;
+	color: #fafafa;
 	resize: vertical;
-	background: white;
-	border: 1px solid #93c5fd;
+	background: rgb(0 0 0 / 24%);
+	border: 1px solid rgb(255 255 255 / 14%);
 	border-radius: 8px;
+}
+
+.draft-review-comment-form textarea::placeholder {
+	color: #71717a;
+}
+
+.draft-review-comment-form textarea:focus {
+	outline: 2px solid rgb(240 81 56 / 32%);
+	outline-offset: 1px;
+	border-color: rgb(255 255 255 / 28%);
 }
 
 .draft-review-comment-actions {
@@ -100,6 +131,34 @@ body {
 	gap: 8px;
 	justify-content: flex-end;
 	margin-top: 8px;
+}
+
+.draft-review-comment-actions button,
+.draft-review-comment button,
+.review-comment-toolbar button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 6px 10px;
+	font: inherit;
+	font-size: 12px;
+	color: rgb(255 255 255 / 78%);
+	cursor: pointer;
+	background: transparent;
+	border: 1px solid rgb(255 255 255 / 18%);
+	border-radius: 6px;
+	transition:
+		color 150ms ease,
+		background-color 150ms ease,
+		border-color 150ms ease;
+}
+
+.draft-review-comment-actions button:hover,
+.draft-review-comment button:hover,
+.review-comment-toolbar button:hover {
+	color: #fafafa;
+	background: rgb(255 255 255 / 8%);
+	border-color: rgb(255 255 255 / 32%);
 }
 
 .review-comment-toolbar {
@@ -111,13 +170,15 @@ body {
 	align-items: center;
 	padding: 12px;
 	font-size: 14px;
-	color: white;
-	background: #0f172a;
+	color: #fafafa;
+	background: rgb(9 9 11 / 88%);
+	border: 1px solid rgb(255 255 255 / 14%);
 	border-radius: 12px;
-	box-shadow: 0 12px 30px rgb(15 23 42 / 25%);
+	box-shadow: 0 20px 70px rgb(0 0 0 / 45%);
+	backdrop-filter: blur(16px);
 }
 
 .review-comment-toolbar p {
 	margin: 0;
-	color: #fecaca;
+	color: #fca5a5;
 }

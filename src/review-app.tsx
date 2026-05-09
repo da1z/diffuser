@@ -54,7 +54,6 @@ type FetchReviewSession = (
 ) => ReturnType<typeof fetch>;
 
 type ParsedFileDiff = FileDiffMetadata;
-type ReviewSessionContext = ReviewSession["context"];
 interface DraftReviewCommentAnnotation {
 	readonly anchor?: DraftReviewCommentAnchor;
 	readonly comment?: SubmittedDraftReviewComment;
@@ -606,30 +605,11 @@ export const ContinuousPatchDiff = ({
 	);
 };
 
-const ReviewHeader = ({
-	context,
-}: {
-	readonly context: ReviewSessionContext;
-}) => {
-	const commit = context.commit;
-
-	return (
-		<header className="review-header">
-			<p className="eyebrow">Diffuser Review</p>
-			<h1>{context.command}</h1>
-			<p>
-				{context.repository.workingDirectory} in {context.repository.root}
-			</p>
-			{commit === undefined ? undefined : (
-				<p>
-					{commit.shortOid} by {commit.authorName} &lt;{commit.authorEmail}&gt;{" "}
-					on {commit.authoredAt}: {commit.subject}
-				</p>
-			)}
-			<p>Captured {context.capturedAt}</p>
-		</header>
-	);
-};
+const ReviewHeader = ({ command }: { readonly command: string }) => (
+	<header className="review-header">
+		<h1>{command}</h1>
+	</header>
+);
 
 const ReviewSessionView = ({
 	session,
@@ -637,7 +617,7 @@ const ReviewSessionView = ({
 	readonly session: ReviewSession;
 }) => (
 	<main className="review-app">
-		<ReviewHeader context={session.context} />
+		<ReviewHeader command={session.context.command} />
 		<section aria-label="Patch" className="review-patch">
 			<ContinuousPatchDiff patch={session.patch} />
 		</section>

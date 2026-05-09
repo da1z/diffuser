@@ -485,7 +485,7 @@ test("notifies the One-shot Server when the Local Review UI unloads", () => {
 	});
 });
 
-test("renders the Review Header for a captured session", () => {
+test("renders only the diff target in the Review Header", () => {
 	const html = renderReviewSession(
 		reviewSession({
 			context: {
@@ -500,9 +500,10 @@ test("renders the Review Header for a captured session", () => {
 		})
 	);
 
-	expect(html).toContain("Diffuser Review");
 	expect(html).toContain("diffuser diff --staged");
-	expect(html).toContain("/repo/packages/app");
+	expect(html).not.toContain("Diffuser Review");
+	expect(html).not.toContain("/repo/packages/app");
+	expect(html).not.toContain("Captured");
 });
 
 test("renders a Continuous Diff View for a multi-file Patch", () => {
@@ -1147,7 +1148,7 @@ test("default-collapses large rendered file diffs without marking them viewed", 
 	});
 });
 
-test("renders commit metadata for a Commit Review", () => {
+test("renders Commit Review command without extra header metadata", () => {
 	const html = renderReviewSession(
 		reviewSession({
 			id: "show-2026-05-08T03:10:00.000Z",
@@ -1173,7 +1174,7 @@ test("renders commit metadata for a Commit Review", () => {
 	);
 
 	expect(html).toContain("diffuser show HEAD");
-	expect(html).toContain("abc123d");
-	expect(html).toContain("Ada Lovelace");
-	expect(html).toContain("Teach diffuser to show commits");
+	expect(html).not.toContain("abc123d");
+	expect(html).not.toContain("Ada Lovelace");
+	expect(html).not.toContain("Teach diffuser to show commits");
 });
