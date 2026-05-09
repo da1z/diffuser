@@ -1,7 +1,14 @@
 import type { DiffLineAnnotation, FileDiffOptions } from "@pierre/diffs";
 import { FileDiff, type FileDiffProps } from "@pierre/diffs/react";
 import { IconCheckboxFill, IconChevronSm, IconSquircleLg } from "@pierre/icons";
-import { type ComponentType, useEffect, useState } from "react";
+import { FileTree, useFileTree } from "@pierre/trees/react";
+import {
+	type ComponentType,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 
 import { formatCommentAnchorLocation } from "./comment-anchor-location";
 import {
@@ -24,6 +31,10 @@ import {
 } from "./diffuser/protocol";
 import { reviewSessionFromSessionEndpointPayload } from "./diffuser/session-endpoint-payload";
 import type { ReviewSession } from "./diffuser/workflow";
+import {
+	type PatchFileNavigatorModel,
+	patchFileNavigatorModelFor,
+} from "./patch-file-navigator";
 import type {
 	DraftReviewCommentAnchor,
 	SubmittedDraftReviewComment,
@@ -344,6 +355,38 @@ const ReviewCommentToolbar = ({
 	</aside>
 );
 
+const PatchFileNavigatorTree = ({
+	model,
+	onSelectFilePath,
+}: {
+	readonly model: PatchFileNavigatorModel;
+	readonly onSelectFilePath: (path: string) => void;
+}) => {
+	const { model: treeModel } = useFileTree({
+		flattenEmptyDirectories: true,
+		initialExpansion: "open",
+		initialVisibleRowCount: 24,
+		onSelectionChange: (selectedPaths) => {
+			const [selectedPath] = selectedPaths;
+			if (
+				selectedPath !== undefined &&
+				model.fileKeyForPath(selectedPath) !== undefined
+			) {
+				onSelectFilePath(selectedPath);
+			}
+		},
+		paths: model.paths,
+	});
+
+	return (
+		<FileTree
+			aria-label="Patch File Navigator"
+			className="patch-file-navigator-tree"
+			model={treeModel}
+		/>
+	);
+};
+
 export const loadReviewSession = async (
 	fetchSession: FetchReviewSession = fetch
 ): Promise<ReviewSession> => {
@@ -379,9 +422,28 @@ export const ContinuousPatchDiff = ({
 	const [interaction, setInteraction] = useState(() =>
 		createContinuousDiffViewInteraction(patch)
 	);
+	const [selectedNavigatorFileKey, setSelectedNavigatorFileKey] = useState<
+		string | undefined
+	>();
+	const fileElements = useRef(new Map<string, HTMLElement>());
 	useEffect(() => {
 		setInteraction(createContinuousDiffViewInteraction(patch));
+		setSelectedNavigatorFileKey(undefined);
+		fileElements.current.clear();
 	}, [patch]);
+	useEffect(() => {
+		if (selectedNavigatorFileKey === undefined) {
+			return;
+		}
+
+		fileElements.current.get(selectedNavigatorFileKey)?.scrollIntoView({
+			block: "start",
+		});
+	}, [selectedNavigatorFileKey]);
+	const navigatorModel = useMemo(
+		() => patchFileNavigatorModelFor(interaction.files),
+		[interaction.files]
+	);
 	const submittedComments =
 		interaction.draftReviewCommentState.submittedComments;
 	const commentCountsByFileKey =
@@ -411,6 +473,21 @@ export const ContinuousPatchDiff = ({
 				return window.confirm(message);
 			})
 		);
+	};
+	const selectNavigatorFilePath = (path: string) => {
+		const fileKey = navigatorModel.fileKeyForPath(path);
+		if (fileKey === undefined) {
+			return;
+		}
+
+		setInteraction((state) => {
+			const fileReviewState = continuousDiffViewFileState(state, fileKey);
+
+			return fileReviewState?.collapsed === true
+				? toggleContinuousDiffViewFileCollapsed(state, fileKey)
+				: state;
+		});
+		setSelectedNavigatorFileKey(fileKey);
 	};
 	const renderDraftReviewCommentAnnotation = (
 		annotation: DraftReviewCommentLineAnnotation
@@ -445,67 +522,98 @@ export const ContinuousPatchDiff = ({
 
 	return (
 		<>
-			{interaction.files.map((file) => {
-				const fileReviewState = continuousDiffViewFileState(
-					interaction,
-					file.key
-				);
+			<aside className="patch-file-navigator-shell">
+				<h2>Patch Files</h2>
+				<PatchFileNavigatorTree
+					key={navigatorModel.paths.join("\0")}
+					model={navigatorModel}
+					onSelectFilePath={selectNavigatorFilePath}
+				/>
+			</aside>
+			<div className="continuous-diff-view">
+				{interaction.files.map((file) => {
+					const fileReviewState = continuousDiffViewFileState(
+						interaction,
+						file.key
+					);
 
-				if (fileReviewState === undefined) {
-					return null;
-				}
+					if (fileReviewState === undefined) {
+						return null;
+					}
 
-				const fileCommentCount = commentCountsByFileKey[file.key] ?? 0;
+					const fileCommentCount = commentCountsByFileKey[file.key] ?? 0;
 
-				return (
-					<DiffRenderer
-						fileDiff={file.fileDiff}
-						key={file.key}
-						lineAnnotations={draftReviewCommentLineAnnotationsForFile({
-							activeAnchor: interaction.activeDraftReviewCommentAnchor,
-							fileKey: file.key,
-							submittedComments,
-						})}
-						options={{
-							...continuousDiffViewOptions,
-							collapsed: fileReviewState.collapsed,
-							enableLineSelection: true,
-							onLineSelected: (selection) => {
-								setInteraction((state) =>
-									selectContinuousDiffViewLines(state, file.key, selection)
-								);
-							},
-						}}
-						renderAnnotation={renderDraftReviewCommentAnnotation}
-						renderHeaderMetadata={() => (
-							<FileHeaderMetadata
-								commentCount={fileCommentCount}
-								label={file.label}
-								onViewedChange={(viewed) => {
-									setInteraction((state) =>
-										markContinuousDiffViewFileViewed(state, file.key, viewed)
-									);
+					return (
+						<div
+							className={
+								selectedNavigatorFileKey === file.key
+									? "continuous-diff-view-file is-navigation-selected"
+									: "continuous-diff-view-file"
+							}
+							data-review-file-label={file.label}
+							key={file.key}
+							ref={(element) => {
+								if (element === null) {
+									fileElements.current.delete(file.key);
+									return;
+								}
+
+								fileElements.current.set(file.key, element);
+							}}
+						>
+							<DiffRenderer
+								fileDiff={file.fileDiff}
+								lineAnnotations={draftReviewCommentLineAnnotationsForFile({
+									activeAnchor: interaction.activeDraftReviewCommentAnchor,
+									fileKey: file.key,
+									submittedComments,
+								})}
+								options={{
+									...continuousDiffViewOptions,
+									collapsed: fileReviewState.collapsed,
+									enableLineSelection: true,
+									onLineSelected: (selection) => {
+										setInteraction((state) =>
+											selectContinuousDiffViewLines(state, file.key, selection)
+										);
+									},
 								}}
-								viewed={fileReviewState.viewed}
+								renderAnnotation={renderDraftReviewCommentAnnotation}
+								renderHeaderMetadata={() => (
+									<FileHeaderMetadata
+										commentCount={fileCommentCount}
+										label={file.label}
+										onViewedChange={(viewed) => {
+											setInteraction((state) =>
+												markContinuousDiffViewFileViewed(
+													state,
+													file.key,
+													viewed
+												)
+											);
+										}}
+										viewed={fileReviewState.viewed}
+									/>
+								)}
+								renderHeaderPrefix={() => (
+									<FileCollapseToggle
+										collapsed={fileReviewState.collapsed}
+										onToggle={() => {
+											setInteraction((state) =>
+												toggleContinuousDiffViewFileCollapsed(state, file.key)
+											);
+										}}
+									/>
+								)}
+								selectedLines={continuousDiffViewSelectedLinesForFile(
+									interaction,
+									file.key
+								)}
 							/>
-						)}
-						renderHeaderPrefix={() => (
-							<FileCollapseToggle
-								collapsed={fileReviewState.collapsed}
-								onToggle={() => {
-									setInteraction((state) =>
-										toggleContinuousDiffViewFileCollapsed(state, file.key)
-									);
-								}}
-							/>
-						)}
-						selectedLines={continuousDiffViewSelectedLinesForFile(
-							interaction,
-							file.key
-						)}
-					/>
-				);
-			})}
+						</div>
+					);
+				})}
+			</div>
 			{submittedComments.length > 0 ? (
 				<ReviewCommentToolbar
 					commentCount={submittedComments.length}

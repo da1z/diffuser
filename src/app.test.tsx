@@ -78,6 +78,11 @@ ${lines}
 `;
 };
 
+const navigatorPatch = `${patchWithRenderedContextRows(
+	"large.txt",
+	LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD + 1
+)}${patchWithRenderedContextRows("src/target.ts", 1)}`;
+
 const reviewSession = (
 	overrides: Partial<ReviewSession> = {}
 ): ReviewSession => ({
@@ -108,6 +113,9 @@ const renderInteractive = (children: ReactNode) => {
 		window,
 		document: window.document,
 		HTMLElement: window.HTMLElement,
+		HTMLDivElement: window.HTMLDivElement,
+		HTMLTemplateElement: window.HTMLTemplateElement,
+		HTMLStyleElement: window.HTMLStyleElement,
 		HTMLInputElement: window.HTMLInputElement,
 		InputEvent: window.InputEvent,
 		KeyboardEvent: window.KeyboardEvent,
@@ -117,6 +125,7 @@ const renderInteractive = (children: ReactNode) => {
 		navigator: window.navigator,
 		Node: window.Node,
 		ResizeObserver: window.ResizeObserver,
+		ShadowRoot: window.ShadowRoot,
 	});
 
 	const container = document.createElement("div");
@@ -208,6 +217,16 @@ const fileHeaderMetadataFor = (
 	fileProbeFor(container, fileName, occurrence)?.querySelector(
 		".file-header-metadata"
 	);
+
+const patchNavigatorFileRowFor = (container: Element, path: string) => {
+	const navigator = container.querySelector<HTMLElement>(
+		'[aria-label="Patch File Navigator"]'
+	);
+
+	return navigator?.shadowRoot?.querySelector<HTMLButtonElement>(
+		`[data-item-path="${path}"]`
+	);
+};
 
 interface DraftReviewSelectionRange {
 	readonly end: number;
@@ -1145,6 +1164,52 @@ test("default-collapses large rendered file diffs without marking them viewed", 
 
 	act(() => {
 		root.unmount();
+	});
+});
+
+test("selects Patch File Navigator rows to expand and scroll Continuous Diff View files without marking them viewed", async () => {
+	const scrolledFileLabels: string[] = [];
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff DiffRenderer={FileDiffProbe} patch={navigatorPatch} />
+	);
+	const originalScrollIntoView = window.HTMLElement.prototype.scrollIntoView;
+	const scrollIntoView = function scrollIntoView(this: HTMLElement) {
+		const label = this.dataset.reviewFileLabel;
+		if (label !== undefined) {
+			scrolledFileLabels.push(label);
+		}
+	};
+	Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
+		configurable: true,
+		value: scrollIntoView,
+	});
+	const largeFile = () => fileProbeFor(container, "large.txt");
+	const largeViewed = () => viewedControlFor(container, "large.txt");
+
+	await act(async () => {
+		await Promise.resolve();
+	});
+
+	expect(patchNavigatorFileRowFor(container, "large.txt")).not.toBeNull();
+	expect(patchNavigatorFileRowFor(container, "src/target.ts")).not.toBeNull();
+	expect(largeFile()?.dataset.collapsed).toBe("true");
+	expect(viewedControlPressedState(largeViewed())).toBe("false");
+
+	await act(async () => {
+		patchNavigatorFileRowFor(container, "large.txt")?.click();
+		await Promise.resolve();
+	});
+
+	expect(largeFile()?.dataset.collapsed).toBe("false");
+	expect(viewedControlPressedState(largeViewed())).toBe("false");
+	expect(scrolledFileLabels).toEqual(["large.txt"]);
+
+	act(() => {
+		root.unmount();
+	});
+	Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
+		configurable: true,
+		value: originalScrollIntoView,
 	});
 });
 
