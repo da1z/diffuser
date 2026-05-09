@@ -101,7 +101,7 @@ _Avoid_: Custom visual system, bespoke performance layer
 - A **Review Session** captures one Git command result at launch time.
 - A **Review Session** contains exactly one non-empty **Patch**.
 - A **Review Session** is patch-only; it does not include old/new file contents beyond the captured **Patch**.
-- The **Local Review UI** renders only the captured **Patch** and does not enrich file entries with hidden full-file context.
+- The **Local Review UI** renders only the captured **Patch** and does not enrich file entries with additional full-file context.
 - A **Review Session** contains **Review Context** such as the command, arguments, repository, and capture time.
 - **Review Context** includes the **Repository Context** for the captured Git command.
 - A **Review Session** does not contain comments, approvals, notes, or saved review state in v1.
