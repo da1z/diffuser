@@ -9,6 +9,7 @@ import {
 	type FileDiffMetadata,
 	type FileDiffProps,
 } from "@pierre/diffs/react";
+import { IconCheckboxFill, IconSquircleLg } from "@pierre/icons";
 import { type ComponentType, useEffect, useMemo, useState } from "react";
 
 import { formatCommentAnchorLocation } from "./comment-anchor-location";
@@ -141,79 +142,51 @@ interface ViewedFileControlProps {
 	readonly viewed: boolean;
 }
 
-const viewedFileControlBaseClassName =
-	"viewed-file-control flex cursor-pointer items-center gap-1.5 rounded-md border py-1 pr-2 pl-1 text-xs transition";
-const viewedFileControlViewedClassName =
-	"border-blue-400/50 bg-blue-500/25 text-blue-200";
-const viewedFileControlUnviewedClassName =
-	"border-white/20 bg-transparent text-white/70 hover:border-white/35 hover:bg-white/5 hover:text-white/85";
-const viewedFileControlIconProps = {
-	fill: "none",
-	height: "16",
-	viewBox: "0 0 16 16",
-	width: "16",
-	xmlns: "http://www.w3.org/2000/svg",
-} as const;
+interface ViewedButtonProps {
+	readonly "aria-label"?: string;
+	readonly className?: string;
+	readonly isViewed: boolean;
+	readonly onClick: () => void;
+}
 
-const viewedFileControlClassName = (viewed: boolean) =>
-	[
-		viewedFileControlBaseClassName,
-		viewed
-			? viewedFileControlViewedClassName
-			: viewedFileControlUnviewedClassName,
-	].join(" ");
-
-const ViewedFileControlIcon = ({ viewed }: { readonly viewed: boolean }) =>
-	viewed ? (
-		<svg
-			aria-hidden="true"
-			className="text-blue-400"
-			{...viewedFileControlIconProps}
-		>
-			<rect fill="currentColor" height="12" rx="3" width="12" x="2" y="2" />
-			<path
-				d="m5.5 8 1.6 1.6 3.4-3.4"
-				stroke="white"
-				strokeLinecap="round"
-				strokeLinejoin="round"
-				strokeWidth="1.5"
-			/>
-		</svg>
-	) : (
-		<svg
-			aria-hidden="true"
-			className="text-white/50"
-			{...viewedFileControlIconProps}
-		>
-			<rect
-				height="10"
-				rx="3"
-				stroke="currentColor"
-				strokeWidth="1.5"
-				width="10"
-				x="3"
-				y="3"
-			/>
-		</svg>
-	);
+const ViewedButton = ({
+	"aria-label": ariaLabel,
+	className,
+	isViewed,
+	onClick,
+}: ViewedButtonProps) => (
+	<button
+		aria-label={ariaLabel}
+		aria-pressed={isViewed}
+		className={`flex cursor-pointer items-center gap-1.5 rounded-md border py-1 pr-2 pl-1 text-xs transition ${
+			isViewed
+				? "border-blue-400/50 bg-blue-500/25 text-blue-200"
+				: "border-white/20 bg-transparent text-white/70 hover:border-white/35 hover:bg-white/5 hover:text-white/85"
+		} ${className ?? ""}`}
+		onClick={onClick}
+		type="button"
+	>
+		{isViewed ? (
+			<IconCheckboxFill className="text-blue-400" />
+		) : (
+			<IconSquircleLg className="text-white/50" />
+		)}
+		Viewed
+	</button>
+);
 
 const ViewedFileControl = ({
 	label,
 	onViewedChange,
 	viewed,
 }: ViewedFileControlProps) => (
-	<button
+	<ViewedButton
 		aria-label={`Mark ${label} viewed`}
-		aria-pressed={viewed}
-		className={viewedFileControlClassName(viewed)}
+		isViewed={viewed}
 		onClick={() => {
 			onViewedChange(!viewed);
 		}}
-		type="button"
-	>
-		<ViewedFileControlIcon viewed={viewed} />
-		Viewed
-	</button>
+	/>
 );
 
 const draftReviewCommentLineAnnotationForAnchor = (
