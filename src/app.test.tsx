@@ -235,6 +235,11 @@ const patchNavigatorFileRowFor = (container: Element, path: string) => {
 	);
 };
 
+const isPatchNavigatorFileRowSelected = (container: Element, path: string) =>
+	patchNavigatorFileRowFor(container, path)?.hasAttribute(
+		"data-item-selected"
+	) ?? false;
+
 const stubScrollIntoView = (
 	scrollIntoView: typeof window.HTMLElement.prototype.scrollIntoView
 ) => {
@@ -1213,11 +1218,7 @@ test("selects Patch File Navigator rows to expand and scroll Continuous Diff Vie
 
 	expect(patchNavigatorFileRowFor(container, "large.txt")).not.toBeNull();
 	expect(patchNavigatorFileRowFor(container, "src/target.ts")).not.toBeNull();
-	expect(
-		patchNavigatorFileRowFor(container, "large.txt")?.hasAttribute(
-			"data-item-selected"
-		)
-	).toBe(false);
+	expect(isPatchNavigatorFileRowSelected(container, "large.txt")).toBe(false);
 	expect(largeFile()?.dataset.collapsed).toBe("true");
 	expect(viewedControlPressedState(largeViewed())).toBe("false");
 
@@ -1228,11 +1229,7 @@ test("selects Patch File Navigator rows to expand and scroll Continuous Diff Vie
 
 	expect(largeFile()?.dataset.collapsed).toBe("false");
 	expect(viewedControlPressedState(largeViewed())).toBe("false");
-	expect(
-		patchNavigatorFileRowFor(container, "large.txt")?.getAttribute(
-			"data-item-selected"
-		)
-	).toBe("true");
+	expect(isPatchNavigatorFileRowSelected(container, "large.txt")).toBe(true);
 	expect(scrolledFileLabels).toEqual(["large.txt"]);
 
 	act(() => {
@@ -1255,15 +1252,13 @@ test("highlights the current Patch File Navigator row from navigation state", as
 			selectedFileKey={aFileKey}
 		/>
 	);
-	const aRow = () => patchNavigatorFileRowFor(container, "a.txt");
-	const bRow = () => patchNavigatorFileRowFor(container, "b.txt");
 
 	await act(async () => {
 		await Promise.resolve();
 	});
 
-	expect(aRow()?.getAttribute("data-item-selected")).toBe("true");
-	expect(bRow()?.hasAttribute("data-item-selected")).toBe(false);
+	expect(isPatchNavigatorFileRowSelected(container, "a.txt")).toBe(true);
+	expect(isPatchNavigatorFileRowSelected(container, "b.txt")).toBe(false);
 
 	act(() => {
 		root.render(
@@ -1278,8 +1273,8 @@ test("highlights the current Patch File Navigator row from navigation state", as
 		await Promise.resolve();
 	});
 
-	expect(aRow()?.hasAttribute("data-item-selected")).toBe(false);
-	expect(bRow()?.getAttribute("data-item-selected")).toBe("true");
+	expect(isPatchNavigatorFileRowSelected(container, "a.txt")).toBe(false);
+	expect(isPatchNavigatorFileRowSelected(container, "b.txt")).toBe(true);
 
 	act(() => {
 		root.unmount();

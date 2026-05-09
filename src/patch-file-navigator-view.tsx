@@ -47,12 +47,29 @@ const areSelectedTreePathsEqual = (
 		? currentPaths.length === 0
 		: currentPaths.length === 1 && currentPaths[0] === selectedTreePath;
 
+const syncPatchFileNavigatorTreeSelection = (
+	treeModel: ReturnType<typeof useFileTree>["model"],
+	selectedTreePath: string | undefined
+) => {
+	const currentSelectedPaths = treeModel.getSelectedPaths();
+	if (areSelectedTreePathsEqual(currentSelectedPaths, selectedTreePath)) {
+		return;
+	}
+
+	for (const path of currentSelectedPaths) {
+		treeModel.getItem(path)?.deselect();
+	}
+	if (selectedTreePath !== undefined) {
+		treeModel.getItem(selectedTreePath)?.select();
+	}
+};
+
 const PatchFileNavigatorTree = ({
 	model,
 	onSelectFileKey,
 	selectedFileKey,
 }: PatchFileNavigatorProps) => {
-	const isSyncingCurrentSelection = useRef(false);
+	const isSyncingTreeSelection = useRef(false);
 	const { model: treeModel } = useFileTree({
 		flattenEmptyDirectories: true,
 		gitStatus: model.entries.flatMap((entry) => {
@@ -63,7 +80,7 @@ const PatchFileNavigatorTree = ({
 		initialExpansion: "open",
 		initialVisibleRowCount: 24,
 		onSelectionChange: (selectedPaths) => {
-			if (isSyncingCurrentSelection.current) {
+			if (isSyncingTreeSelection.current) {
 				return;
 			}
 
@@ -97,21 +114,11 @@ const PatchFileNavigatorTree = ({
 	);
 
 	useEffect(() => {
-		const currentSelectedPaths = treeModel.getSelectedPaths();
-		if (areSelectedTreePathsEqual(currentSelectedPaths, selectedTreePath)) {
-			return;
-		}
-
-		isSyncingCurrentSelection.current = true;
+		isSyncingTreeSelection.current = true;
 		try {
-			for (const path of currentSelectedPaths) {
-				treeModel.getItem(path)?.deselect();
-			}
-			if (selectedTreePath !== undefined) {
-				treeModel.getItem(selectedTreePath)?.select();
-			}
+			syncPatchFileNavigatorTreeSelection(treeModel, selectedTreePath);
 		} finally {
-			isSyncingCurrentSelection.current = false;
+			isSyncingTreeSelection.current = false;
 		}
 	}, [selectedTreePath, treeModel]);
 
