@@ -8,7 +8,7 @@ import type {
 
 interface PatchFileNavigatorProps {
 	readonly model: PatchFileNavigatorModel;
-	readonly onSelectTreePath: (treePath: string) => void;
+	readonly onSelectFileKey: (fileKey: string) => void;
 }
 
 const patchFileNavigatorTreeKeyFor = (model: PatchFileNavigatorModel) =>
@@ -34,7 +34,7 @@ const patchFileNavigatorGitStatusFor = (
 
 const PatchFileNavigatorTree = ({
 	model,
-	onSelectTreePath,
+	onSelectFileKey,
 }: PatchFileNavigatorProps) => {
 	const { model: treeModel } = useFileTree({
 		flattenEmptyDirectories: true,
@@ -47,11 +47,13 @@ const PatchFileNavigatorTree = ({
 		initialVisibleRowCount: 24,
 		onSelectionChange: (selectedPaths) => {
 			const [selectedPath] = selectedPaths;
-			if (
-				selectedPath !== undefined &&
-				model.fileKeyForTreePath(selectedPath) !== undefined
-			) {
-				onSelectTreePath(selectedPath);
+			if (selectedPath === undefined) {
+				return;
+			}
+
+			const selectedFileKey = model.fileKeyForTreePath(selectedPath);
+			if (selectedFileKey !== undefined) {
+				onSelectFileKey(selectedFileKey);
 			}
 		},
 		paths: model.treePaths,
@@ -80,7 +82,7 @@ const PatchFileNavigatorTree = ({
 
 export const PatchFileNavigatorSidebar = ({
 	model,
-	onSelectTreePath,
+	onSelectFileKey,
 }: PatchFileNavigatorProps) => (
 	<aside
 		aria-labelledby="patch-file-navigator-heading"
@@ -95,7 +97,7 @@ export const PatchFileNavigatorSidebar = ({
 		<PatchFileNavigatorTree
 			key={patchFileNavigatorTreeKeyFor(model)}
 			model={model}
-			onSelectTreePath={onSelectTreePath}
+			onSelectFileKey={onSelectFileKey}
 		/>
 	</aside>
 );

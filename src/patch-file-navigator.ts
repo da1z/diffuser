@@ -19,28 +19,51 @@ export interface PatchFileNavigatorModel {
 	readonly treePaths: readonly string[];
 }
 
+interface UniqueTreePathOptions {
+	readonly displayPath: string;
+	readonly occurrence: number;
+	readonly realDisplayPaths: ReadonlySet<string>;
+	readonly usedTreePaths: ReadonlySet<string>;
+}
+
+const uniqueTreePathFor = ({
+	displayPath,
+	occurrence,
+	realDisplayPaths,
+	usedTreePaths,
+}: UniqueTreePathOptions) => {
+	let treePath = displayPath;
+	let suffix = occurrence;
+
+	while (
+		usedTreePaths.has(treePath) ||
+		(occurrence > 1 && realDisplayPaths.has(treePath))
+	) {
+		treePath = `${displayPath} (${suffix})`;
+		suffix += 1;
+	}
+
+	return treePath;
+};
+
 export const patchFileNavigatorModelFor = (
 	files: readonly ContinuousDiffViewFile[]
 ): PatchFileNavigatorModel => {
-	const displayPaths = new Set(files.map((file) => file.label));
-	const displayPathOccurrences = new Map<string, number>();
+	const realDisplayPaths = new Set(files.map((file) => file.label));
+	const seenDisplayPathCounts = new Map<string, number>();
 	const entryByTreePath = new Map<string, PatchFileNavigatorEntry>();
-	const fileKeyByTreePath = new Map<string, string>();
 	const entries: PatchFileNavigatorEntry[] = [];
 	const usedTreePaths = new Set<string>();
 
 	for (const file of files) {
-		const occurrence = (displayPathOccurrences.get(file.label) ?? 0) + 1;
-		displayPathOccurrences.set(file.label, occurrence);
-		let treePath = file.label;
-		let suffix = occurrence;
-		while (
-			usedTreePaths.has(treePath) ||
-			(occurrence > 1 && displayPaths.has(treePath))
-		) {
-			treePath = `${file.label} (${suffix})`;
-			suffix += 1;
-		}
+		const occurrence = (seenDisplayPathCounts.get(file.label) ?? 0) + 1;
+		seenDisplayPathCounts.set(file.label, occurrence);
+		const treePath = uniqueTreePathFor({
+			displayPath: file.label,
+			occurrence,
+			realDisplayPaths,
+			usedTreePaths,
+		});
 
 		const entry = {
 			changeType: file.fileDiff.type,
@@ -51,7 +74,6 @@ export const patchFileNavigatorModelFor = (
 		} satisfies PatchFileNavigatorEntry;
 
 		entryByTreePath.set(treePath, entry);
-		fileKeyByTreePath.set(treePath, file.key);
 		usedTreePaths.add(treePath);
 		entries.push(entry);
 	}
@@ -59,7 +81,7 @@ export const patchFileNavigatorModelFor = (
 	return {
 		entries,
 		entryForTreePath: (path) => entryByTreePath.get(path),
-		fileKeyForTreePath: (path) => fileKeyByTreePath.get(path),
+		fileKeyForTreePath: (path) => entryByTreePath.get(path)?.fileKey,
 		treePaths: entries.map((entry) => entry.treePath),
 	};
 };

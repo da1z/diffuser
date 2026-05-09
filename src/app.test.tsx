@@ -223,9 +223,31 @@ const patchNavigatorFileRowFor = (container: Element, path: string) => {
 		'[aria-label="Patch File Navigator"]'
 	);
 
-	return navigator?.shadowRoot?.querySelector<HTMLButtonElement>(
-		`[data-item-path="${path}"]`
+	return (
+		Array.from(
+			navigator?.shadowRoot?.querySelectorAll<HTMLButtonElement>(
+				"[data-item-path]"
+			) ?? []
+		).find((row) => row.getAttribute("data-item-path") === path) ?? null
 	);
+};
+
+const stubScrollIntoView = (
+	scrollIntoView: typeof window.HTMLElement.prototype.scrollIntoView
+) => {
+	const originalScrollIntoView = window.HTMLElement.prototype.scrollIntoView;
+
+	Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
+		configurable: true,
+		value: scrollIntoView,
+	});
+
+	return () => {
+		Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
+			configurable: true,
+			value: originalScrollIntoView,
+		});
+	};
 };
 
 interface DraftReviewSelectionRange {
@@ -1172,17 +1194,13 @@ test("selects Patch File Navigator rows to expand and scroll Continuous Diff Vie
 	const { container, root } = renderInteractive(
 		<ContinuousPatchDiff DiffRenderer={FileDiffProbe} patch={navigatorPatch} />
 	);
-	const originalScrollIntoView = window.HTMLElement.prototype.scrollIntoView;
 	const scrollIntoView = function scrollIntoView(this: HTMLElement) {
 		const label = this.dataset.reviewFileLabel;
 		if (label !== undefined) {
 			scrolledFileLabels.push(label);
 		}
 	};
-	Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
-		configurable: true,
-		value: scrollIntoView,
-	});
+	const restoreScrollIntoView = stubScrollIntoView(scrollIntoView);
 	const largeFile = () => fileProbeFor(container, "large.txt");
 	const largeViewed = () => viewedControlFor(container, "large.txt");
 
@@ -1207,10 +1225,7 @@ test("selects Patch File Navigator rows to expand and scroll Continuous Diff Vie
 	act(() => {
 		root.unmount();
 	});
-	Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
-		configurable: true,
-		value: originalScrollIntoView,
-	});
+	restoreScrollIntoView();
 });
 
 test("maps duplicate Patch File Navigator paths to the selected rendered file", async () => {
@@ -1221,7 +1236,6 @@ test("maps duplicate Patch File Navigator paths to the selected rendered file", 
 			patch={repeatedFilePatch}
 		/>
 	);
-	const originalScrollIntoView = window.HTMLElement.prototype.scrollIntoView;
 	const scrollIntoView = function scrollIntoView(this: HTMLElement) {
 		const fileWrappers = Array.from(
 			container.querySelectorAll<HTMLElement>(".continuous-diff-view-file")
@@ -1232,10 +1246,7 @@ test("maps duplicate Patch File Navigator paths to the selected rendered file", 
 			scrolledFileIndexes.push(index);
 		}
 	};
-	Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
-		configurable: true,
-		value: scrollIntoView,
-	});
+	const restoreScrollIntoView = stubScrollIntoView(scrollIntoView);
 
 	await act(async () => {
 		await Promise.resolve();
@@ -1263,10 +1274,7 @@ test("maps duplicate Patch File Navigator paths to the selected rendered file", 
 	act(() => {
 		root.unmount();
 	});
-	Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
-		configurable: true,
-		value: originalScrollIntoView,
-	});
+	restoreScrollIntoView();
 });
 
 test("shows renamed files in the Patch File Navigator with previous-path context", async () => {
