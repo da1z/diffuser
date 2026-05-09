@@ -146,6 +146,7 @@ const PatchFileNavigatorTree = ({
 		flattenEmptyDirectories: true,
 		initialExpansion: "open",
 		initialVisibleRowCount: 24,
+		search: true,
 		onSelectionChange: (selectedPaths) => {
 			if (isSyncingTreeSelection.current) {
 				return;

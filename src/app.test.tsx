@@ -245,24 +245,52 @@ const fileHeaderMetadataFor = (
 		".file-header-metadata"
 	);
 
-const patchNavigatorRowFor = (container: Element, path: string) => {
-	const navigator = container.querySelector<HTMLElement>(
-		'[aria-label="Patch File Navigator"]'
-	);
+const patchNavigatorShadowRootFor = (container: Element) =>
+	container.querySelector<HTMLElement>('[aria-label="Patch File Navigator"]')
+		?.shadowRoot;
 
-	return (
-		Array.from(
-			navigator?.shadowRoot?.querySelectorAll<HTMLButtonElement>(
-				"[data-item-path]"
-			) ?? []
-		).find((row) => row.getAttribute("data-item-path") === path) ?? null
-	);
-};
+const patchNavigatorRowFor = (container: Element, path: string) =>
+	Array.from(
+		patchNavigatorShadowRootFor(container)?.querySelectorAll<HTMLButtonElement>(
+			"[data-item-path]"
+		) ?? []
+	).find((row) => row.getAttribute("data-item-path") === path) ?? null;
 
 const patchNavigatorFileRowFor = (container: Element, path: string) => {
 	const row = patchNavigatorRowFor(container, path);
 
 	return row?.getAttribute("data-item-type") === "file" ? row : null;
+};
+
+const patchNavigatorSearchInputFor = (container: Element) =>
+	patchNavigatorShadowRootFor(container)?.querySelector<HTMLInputElement>(
+		"[data-file-tree-search-input]"
+	) ?? null;
+
+const waitForPatchNavigatorRender = async () => {
+	await act(async () => {
+		await Promise.resolve();
+	});
+};
+
+const clickPatchNavigatorFileRow = async (container: Element, path: string) => {
+	await act(async () => {
+		patchNavigatorFileRowFor(container, path)?.click();
+		await Promise.resolve();
+	});
+};
+
+const enterPatchNavigatorSearchQuery = async (
+	searchInput: HTMLInputElement,
+	query: string
+) => {
+	await act(async () => {
+		searchInput.value = query;
+		searchInput.dispatchEvent(
+			new window.InputEvent("input", { bubbles: true })
+		);
+		await Promise.resolve();
+	});
 };
 
 const isPatchNavigatorFileRowSelected = (container: Element, path: string) =>
@@ -1242,9 +1270,7 @@ test("selects Patch File Navigator rows to expand and scroll Continuous Diff Vie
 	const largeFile = () => fileProbeFor(container, "large.txt");
 	const largeViewed = () => viewedControlFor(container, "large.txt");
 
-	await act(async () => {
-		await Promise.resolve();
-	});
+	await waitForPatchNavigatorRender();
 
 	expect(patchNavigatorFileRowFor(container, "large.txt")).not.toBeNull();
 	expect(patchNavigatorFileRowFor(container, "src/target.ts")).not.toBeNull();
@@ -1252,10 +1278,7 @@ test("selects Patch File Navigator rows to expand and scroll Continuous Diff Vie
 	expect(largeFile()?.dataset.collapsed).toBe("true");
 	expect(viewedControlPressedState(largeViewed())).toBe("false");
 
-	await act(async () => {
-		patchNavigatorFileRowFor(container, "large.txt")?.click();
-		await Promise.resolve();
-	});
+	await clickPatchNavigatorFileRow(container, "large.txt");
 
 	expect(largeFile()?.dataset.collapsed).toBe("false");
 	expect(viewedControlPressedState(largeViewed())).toBe("false");
@@ -1314,6 +1337,37 @@ test("highlights the current Patch File Navigator row from navigation state", as
 	});
 });
 
+test("filters Patch File Navigator paths by search query", async () => {
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff DiffRenderer={FileDiffProbe} patch={navigatorPatch} />
+	);
+
+	await waitForPatchNavigatorRender();
+
+	const searchInput = patchNavigatorSearchInputFor(container);
+
+	expect(searchInput).not.toBeNull();
+	if (searchInput === null) {
+		throw new Error("Expected Patch File Navigator search input.");
+	}
+	expect(patchNavigatorFileRowFor(container, "large.txt")).not.toBeNull();
+	expect(patchNavigatorFileRowFor(container, "src/target.ts")).not.toBeNull();
+
+	await enterPatchNavigatorSearchQuery(searchInput, "target");
+
+	expect(patchNavigatorFileRowFor(container, "large.txt")).toBeNull();
+	expect(patchNavigatorFileRowFor(container, "src/target.ts")).not.toBeNull();
+
+	await enterPatchNavigatorSearchQuery(searchInput, "");
+
+	expect(patchNavigatorFileRowFor(container, "large.txt")).not.toBeNull();
+	expect(patchNavigatorFileRowFor(container, "src/target.ts")).not.toBeNull();
+
+	act(() => {
+		root.unmount();
+	});
+});
+
 test("maps duplicate Patch File Navigator paths to the selected rendered file", async () => {
 	const scrolledFileIndexes: number[] = [];
 	const { container, root } = renderInteractive(
@@ -1334,17 +1388,12 @@ test("maps duplicate Patch File Navigator paths to the selected rendered file", 
 	};
 	const restoreScrollIntoView = stubScrollIntoView(scrollIntoView);
 
-	await act(async () => {
-		await Promise.resolve();
-	});
+	await waitForPatchNavigatorRender();
 
 	expect(patchNavigatorFileRowFor(container, "a.txt")).not.toBeNull();
 	expect(patchNavigatorFileRowFor(container, "a.txt (2)")).not.toBeNull();
 
-	await act(async () => {
-		patchNavigatorFileRowFor(container, "a.txt (2)")?.click();
-		await Promise.resolve();
-	});
+	await clickPatchNavigatorFileRow(container, "a.txt (2)");
 
 	expect(scrolledFileIndexes).toEqual([1]);
 	expect(
@@ -1371,9 +1420,7 @@ test("shows renamed files in the Patch File Navigator with previous-path context
 		/>
 	);
 
-	await act(async () => {
-		await Promise.resolve();
-	});
+	await waitForPatchNavigatorRender();
 
 	const renamedRow = patchNavigatorFileRowFor(container, "new-name.txt");
 
