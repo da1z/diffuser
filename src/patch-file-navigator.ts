@@ -1,27 +1,27 @@
 import type { ContinuousDiffViewFile } from "./continuous-diff-view-interaction";
 
 export interface PatchFileNavigatorModel {
-	readonly fileKeyForPath: (path: string) => string | undefined;
-	readonly paths: readonly string[];
+	readonly firstFileKeyForPath: (path: string) => string | undefined;
+	readonly uniquePaths: readonly string[];
 }
 
 export const patchFileNavigatorModelFor = (
 	files: readonly ContinuousDiffViewFile[]
 ): PatchFileNavigatorModel => {
-	const pathToFileKey = new Map<string, string>();
-	const paths: string[] = [];
+	const firstFileKeyByPath = new Map<string, string>();
+	const uniquePaths: string[] = [];
 
 	for (const file of files) {
-		if (pathToFileKey.has(file.label)) {
+		if (firstFileKeyByPath.has(file.label)) {
 			continue;
 		}
 
-		pathToFileKey.set(file.label, file.key);
-		paths.push(file.label);
+		firstFileKeyByPath.set(file.label, file.key);
+		uniquePaths.push(file.label);
 	}
 
 	return {
-		fileKeyForPath: (path) => pathToFileKey.get(path),
-		paths,
+		firstFileKeyForPath: (path) => firstFileKeyByPath.get(path),
+		uniquePaths,
 	};
 };

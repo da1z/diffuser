@@ -1,7 +1,6 @@
 import type { DiffLineAnnotation, FileDiffOptions } from "@pierre/diffs";
 import { FileDiff, type FileDiffProps } from "@pierre/diffs/react";
 import { IconCheckboxFill, IconChevronSm, IconSquircleLg } from "@pierre/icons";
-import { FileTree, useFileTree } from "@pierre/trees/react";
 import {
 	type ComponentType,
 	useEffect,
@@ -31,10 +30,8 @@ import {
 } from "./diffuser/protocol";
 import { reviewSessionFromSessionEndpointPayload } from "./diffuser/session-endpoint-payload";
 import type { ReviewSession } from "./diffuser/workflow";
-import {
-	type PatchFileNavigatorModel,
-	patchFileNavigatorModelFor,
-} from "./patch-file-navigator";
+import { patchFileNavigatorModelFor } from "./patch-file-navigator";
+import { PatchFileNavigatorSidebar } from "./patch-file-navigator-view";
 import type {
 	DraftReviewCommentAnchor,
 	SubmittedDraftReviewComment,
@@ -355,38 +352,6 @@ const ReviewCommentToolbar = ({
 	</aside>
 );
 
-const PatchFileNavigatorTree = ({
-	model,
-	onSelectFilePath,
-}: {
-	readonly model: PatchFileNavigatorModel;
-	readonly onSelectFilePath: (path: string) => void;
-}) => {
-	const { model: treeModel } = useFileTree({
-		flattenEmptyDirectories: true,
-		initialExpansion: "open",
-		initialVisibleRowCount: 24,
-		onSelectionChange: (selectedPaths) => {
-			const [selectedPath] = selectedPaths;
-			if (
-				selectedPath !== undefined &&
-				model.fileKeyForPath(selectedPath) !== undefined
-			) {
-				onSelectFilePath(selectedPath);
-			}
-		},
-		paths: model.paths,
-	});
-
-	return (
-		<FileTree
-			aria-label="Patch File Navigator"
-			className="patch-file-navigator-tree"
-			model={treeModel}
-		/>
-	);
-};
-
 export const loadReviewSession = async (
 	fetchSession: FetchReviewSession = fetch
 ): Promise<ReviewSession> => {
@@ -474,19 +439,24 @@ export const ContinuousPatchDiff = ({
 			})
 		);
 	};
+	const expandFileIfCollapsed = (fileKey: string) => {
+		setInteraction((state) => {
+			const fileReviewState = continuousDiffViewFileState(state, fileKey);
+
+			if (fileReviewState?.collapsed !== true) {
+				return state;
+			}
+
+			return toggleContinuousDiffViewFileCollapsed(state, fileKey);
+		});
+	};
 	const selectNavigatorFilePath = (path: string) => {
-		const fileKey = navigatorModel.fileKeyForPath(path);
+		const fileKey = navigatorModel.firstFileKeyForPath(path);
 		if (fileKey === undefined) {
 			return;
 		}
 
-		setInteraction((state) => {
-			const fileReviewState = continuousDiffViewFileState(state, fileKey);
-
-			return fileReviewState?.collapsed === true
-				? toggleContinuousDiffViewFileCollapsed(state, fileKey)
-				: state;
-		});
+		expandFileIfCollapsed(fileKey);
 		setSelectedNavigatorFileKey(fileKey);
 	};
 	const renderDraftReviewCommentAnnotation = (
@@ -522,14 +492,10 @@ export const ContinuousPatchDiff = ({
 
 	return (
 		<>
-			<aside className="patch-file-navigator-shell">
-				<h2>Patch Files</h2>
-				<PatchFileNavigatorTree
-					key={navigatorModel.paths.join("\0")}
-					model={navigatorModel}
-					onSelectFilePath={selectNavigatorFilePath}
-				/>
-			</aside>
+			<PatchFileNavigatorSidebar
+				model={navigatorModel}
+				onSelectFilePath={selectNavigatorFilePath}
+			/>
 			<div className="continuous-diff-view">
 				{interaction.files.map((file) => {
 					const fileReviewState = continuousDiffViewFileState(

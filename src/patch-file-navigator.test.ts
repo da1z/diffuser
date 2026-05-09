@@ -44,27 +44,29 @@ test("builds a Patch File Navigator model from Continuous Diff View files", () =
 	const interaction = createContinuousDiffViewInteraction(nestedPatch);
 	const navigator = patchFileNavigatorModelFor(interaction.files);
 
-	expect(navigator.paths).toEqual([
+	expect(navigator.uniquePaths).toEqual([
 		"src/app.ts",
 		"docs/guide.md",
 		"new-name.txt",
 	]);
-	expect(navigator.fileKeyForPath("src/app.ts")).toBe(
+	expect(navigator.firstFileKeyForPath("src/app.ts")).toBe(
 		interaction.files[0]?.key
 	);
-	expect(navigator.fileKeyForPath("docs/guide.md")).toBe(
+	expect(navigator.firstFileKeyForPath("docs/guide.md")).toBe(
 		interaction.files[1]?.key
 	);
-	expect(navigator.fileKeyForPath("new-name.txt")).toBe(
+	expect(navigator.firstFileKeyForPath("new-name.txt")).toBe(
 		interaction.files[2]?.key
 	);
-	expect(navigator.fileKeyForPath("old-name.txt")).toBeUndefined();
+	expect(navigator.firstFileKeyForPath("old-name.txt")).toBeUndefined();
 });
 
 test("deduplicates tree paths while preserving the first matching review file key", () => {
 	const interaction = createContinuousDiffViewInteraction(repeatedFilePatch);
 	const navigator = patchFileNavigatorModelFor(interaction.files);
 
-	expect(navigator.paths).toEqual(["a.txt"]);
-	expect(navigator.fileKeyForPath("a.txt")).toBe(interaction.files[0]?.key);
+	expect(navigator.uniquePaths).toEqual(["a.txt"]);
+	expect(navigator.firstFileKeyForPath("a.txt")).toBe(
+		interaction.files[0]?.key
+	);
 });
