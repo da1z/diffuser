@@ -45,6 +45,7 @@ const PatchFileNavigatorTree = ({
 		}),
 		initialExpansion: "open",
 		initialVisibleRowCount: 24,
+		search: true,
 		onSelectionChange: (selectedPaths) => {
 			const [selectedPath] = selectedPaths;
 			if (selectedPath === undefined) {

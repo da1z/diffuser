@@ -232,6 +232,18 @@ const patchNavigatorFileRowFor = (container: Element, path: string) => {
 	);
 };
 
+const patchNavigatorSearchInputFor = (container: Element) => {
+	const navigator = container.querySelector<HTMLElement>(
+		'[aria-label="Patch File Navigator"]'
+	);
+
+	return (
+		navigator?.shadowRoot?.querySelector<HTMLInputElement>(
+			"[data-file-tree-search-input]"
+		) ?? null
+	);
+};
+
 const stubScrollIntoView = (
 	scrollIntoView: typeof window.HTMLElement.prototype.scrollIntoView
 ) => {
@@ -1226,6 +1238,51 @@ test("selects Patch File Navigator rows to expand and scroll Continuous Diff Vie
 		root.unmount();
 	});
 	restoreScrollIntoView();
+});
+
+test("filters Patch File Navigator paths by search query", async () => {
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff DiffRenderer={FileDiffProbe} patch={navigatorPatch} />
+	);
+
+	await act(async () => {
+		await Promise.resolve();
+	});
+
+	const searchInput = patchNavigatorSearchInputFor(container);
+
+	expect(searchInput).not.toBeNull();
+	if (searchInput === null) {
+		throw new Error("Expected Patch File Navigator search input.");
+	}
+	expect(patchNavigatorFileRowFor(container, "large.txt")).not.toBeNull();
+	expect(patchNavigatorFileRowFor(container, "src/target.ts")).not.toBeNull();
+
+	await act(async () => {
+		searchInput.value = "target";
+		searchInput.dispatchEvent(
+			new window.InputEvent("input", { bubbles: true })
+		);
+		await Promise.resolve();
+	});
+
+	expect(patchNavigatorFileRowFor(container, "large.txt")).toBeNull();
+	expect(patchNavigatorFileRowFor(container, "src/target.ts")).not.toBeNull();
+
+	await act(async () => {
+		searchInput.value = "";
+		searchInput.dispatchEvent(
+			new window.InputEvent("input", { bubbles: true })
+		);
+		await Promise.resolve();
+	});
+
+	expect(patchNavigatorFileRowFor(container, "large.txt")).not.toBeNull();
+	expect(patchNavigatorFileRowFor(container, "src/target.ts")).not.toBeNull();
+
+	act(() => {
+		root.unmount();
+	});
 });
 
 test("maps duplicate Patch File Navigator paths to the selected rendered file", async () => {
