@@ -450,8 +450,8 @@ export const ContinuousPatchDiff = ({
 			return toggleContinuousDiffViewFileCollapsed(state, fileKey);
 		});
 	};
-	const selectNavigatorFilePath = (path: string) => {
-		const fileKey = navigatorModel.firstFileKeyForPath(path);
+	const selectNavigatorTreePath = (treePath: string) => {
+		const fileKey = navigatorModel.fileKeyForTreePath(treePath);
 		if (fileKey === undefined) {
 			return;
 		}
@@ -494,7 +494,7 @@ export const ContinuousPatchDiff = ({
 		<>
 			<PatchFileNavigatorSidebar
 				model={navigatorModel}
-				onSelectFilePath={selectNavigatorFilePath}
+				onSelectTreePath={selectNavigatorTreePath}
 			/>
 			<div className="continuous-diff-view">
 				{interaction.files.map((file) => {

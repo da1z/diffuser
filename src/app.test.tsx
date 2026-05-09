@@ -1213,6 +1213,89 @@ test("selects Patch File Navigator rows to expand and scroll Continuous Diff Vie
 	});
 });
 
+test("maps duplicate Patch File Navigator paths to the selected rendered file", async () => {
+	const scrolledFileIndexes: number[] = [];
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={repeatedFilePatch}
+		/>
+	);
+	const originalScrollIntoView = window.HTMLElement.prototype.scrollIntoView;
+	const scrollIntoView = function scrollIntoView(this: HTMLElement) {
+		const fileWrappers = Array.from(
+			container.querySelectorAll<HTMLElement>(".continuous-diff-view-file")
+		);
+		const index = fileWrappers.indexOf(this);
+
+		if (index >= 0) {
+			scrolledFileIndexes.push(index);
+		}
+	};
+	Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
+		configurable: true,
+		value: scrollIntoView,
+	});
+
+	await act(async () => {
+		await Promise.resolve();
+	});
+
+	expect(patchNavigatorFileRowFor(container, "a.txt")).not.toBeNull();
+	expect(patchNavigatorFileRowFor(container, "a.txt (2)")).not.toBeNull();
+
+	await act(async () => {
+		patchNavigatorFileRowFor(container, "a.txt (2)")?.click();
+		await Promise.resolve();
+	});
+
+	expect(scrolledFileIndexes).toEqual([1]);
+	expect(
+		Array.from(
+			container.querySelectorAll<HTMLElement>(".continuous-diff-view-file")
+		).map((file) =>
+			file.classList.contains("is-navigation-selected")
+				? "selected"
+				: "unselected"
+		)
+	).toEqual(["unselected", "selected"]);
+
+	act(() => {
+		root.unmount();
+	});
+	Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
+		configurable: true,
+		value: originalScrollIntoView,
+	});
+});
+
+test("shows renamed files in the Patch File Navigator with previous-path context", async () => {
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={draftCommentPatch}
+		/>
+	);
+
+	await act(async () => {
+		await Promise.resolve();
+	});
+
+	const renamedRow = patchNavigatorFileRowFor(container, "new-name.txt");
+
+	expect(renamedRow).not.toBeNull();
+	expect(patchNavigatorFileRowFor(container, "old-name.txt")).toBeNull();
+	expect(renamedRow?.getAttribute("data-item-git-status")).toBe("renamed");
+	expect(renamedRow?.textContent).toContain("renamed");
+	expect(
+		renamedRow?.querySelector('[title="Renamed from old-name.txt"]')
+	).not.toBeNull();
+
+	act(() => {
+		root.unmount();
+	});
+});
+
 test("renders Commit Review command without extra header metadata", () => {
 	const html = renderReviewSession(
 		reviewSession({
