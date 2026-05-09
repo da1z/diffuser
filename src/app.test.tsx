@@ -4,6 +4,7 @@ import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import { createContinuousDiffViewInteraction } from "./continuous-diff-view-interaction";
 import {
 	reviewSessionEndpoint,
 	reviewSessionShutdownEndpoint,
@@ -14,6 +15,8 @@ import {
 	copyReviewErrorMessage,
 } from "./draft-review-comment-copy-clear-policy";
 import { LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD } from "./file-review-state";
+import { patchFileNavigatorModelFor } from "./patch-file-navigator";
+import { PatchFileNavigatorSidebar } from "./patch-file-navigator-view";
 import {
 	App,
 	ContinuousPatchDiff,
@@ -1210,6 +1213,11 @@ test("selects Patch File Navigator rows to expand and scroll Continuous Diff Vie
 
 	expect(patchNavigatorFileRowFor(container, "large.txt")).not.toBeNull();
 	expect(patchNavigatorFileRowFor(container, "src/target.ts")).not.toBeNull();
+	expect(
+		patchNavigatorFileRowFor(container, "large.txt")?.hasAttribute(
+			"data-item-selected"
+		)
+	).toBe(false);
 	expect(largeFile()?.dataset.collapsed).toBe("true");
 	expect(viewedControlPressedState(largeViewed())).toBe("false");
 
@@ -1220,12 +1228,62 @@ test("selects Patch File Navigator rows to expand and scroll Continuous Diff Vie
 
 	expect(largeFile()?.dataset.collapsed).toBe("false");
 	expect(viewedControlPressedState(largeViewed())).toBe("false");
+	expect(
+		patchNavigatorFileRowFor(container, "large.txt")?.getAttribute(
+			"data-item-selected"
+		)
+	).toBe("true");
 	expect(scrolledFileLabels).toEqual(["large.txt"]);
 
 	act(() => {
 		root.unmount();
 	});
 	restoreScrollIntoView();
+});
+
+test("highlights the current Patch File Navigator row from navigation state", async () => {
+	const navigatorModel = patchFileNavigatorModelFor(
+		createContinuousDiffViewInteraction(multiFilePatch).files
+	);
+	const aFileKey = navigatorModel.fileKeyForTreePath("a.txt");
+	const bFileKey = navigatorModel.fileKeyForTreePath("b.txt");
+	const ignoreFileSelection = () => undefined;
+	const { container, root } = renderInteractive(
+		<PatchFileNavigatorSidebar
+			model={navigatorModel}
+			onSelectFileKey={ignoreFileSelection}
+			selectedFileKey={aFileKey}
+		/>
+	);
+	const aRow = () => patchNavigatorFileRowFor(container, "a.txt");
+	const bRow = () => patchNavigatorFileRowFor(container, "b.txt");
+
+	await act(async () => {
+		await Promise.resolve();
+	});
+
+	expect(aRow()?.getAttribute("data-item-selected")).toBe("true");
+	expect(bRow()?.hasAttribute("data-item-selected")).toBe(false);
+
+	act(() => {
+		root.render(
+			<PatchFileNavigatorSidebar
+				model={navigatorModel}
+				onSelectFileKey={ignoreFileSelection}
+				selectedFileKey={bFileKey}
+			/>
+		);
+	});
+	await act(async () => {
+		await Promise.resolve();
+	});
+
+	expect(aRow()?.hasAttribute("data-item-selected")).toBe(false);
+	expect(bRow()?.getAttribute("data-item-selected")).toBe("true");
+
+	act(() => {
+		root.unmount();
+	});
 });
 
 test("maps duplicate Patch File Navigator paths to the selected rendered file", async () => {

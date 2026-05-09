@@ -1,5 +1,6 @@
 import type { GitStatusEntry } from "@pierre/trees";
 import { FileTree, useFileTree } from "@pierre/trees/react";
+import { useEffect, useRef } from "react";
 
 import type {
 	PatchFileNavigatorEntry,
@@ -9,6 +10,7 @@ import type {
 interface PatchFileNavigatorProps {
 	readonly model: PatchFileNavigatorModel;
 	readonly onSelectFileKey: (fileKey: string) => void;
+	readonly selectedFileKey: string | undefined;
 }
 
 const patchFileNavigatorTreeKeyFor = (model: PatchFileNavigatorModel) =>
@@ -32,10 +34,25 @@ const patchFileNavigatorGitStatusFor = (
 	}
 };
 
+const patchFileNavigatorTreePathForFileKey = (
+	model: PatchFileNavigatorModel,
+	fileKey: string | undefined
+) => model.entries.find((entry) => entry.fileKey === fileKey)?.treePath;
+
+const areSelectedTreePathsEqual = (
+	currentPaths: readonly string[],
+	selectedTreePath: string | undefined
+) =>
+	selectedTreePath === undefined
+		? currentPaths.length === 0
+		: currentPaths.length === 1 && currentPaths[0] === selectedTreePath;
+
 const PatchFileNavigatorTree = ({
 	model,
 	onSelectFileKey,
+	selectedFileKey,
 }: PatchFileNavigatorProps) => {
+	const isSyncingCurrentSelection = useRef(false);
 	const { model: treeModel } = useFileTree({
 		flattenEmptyDirectories: true,
 		gitStatus: model.entries.flatMap((entry) => {
@@ -46,6 +63,10 @@ const PatchFileNavigatorTree = ({
 		initialExpansion: "open",
 		initialVisibleRowCount: 24,
 		onSelectionChange: (selectedPaths) => {
+			if (isSyncingCurrentSelection.current) {
+				return;
+			}
+
 			const [selectedPath] = selectedPaths;
 			if (selectedPath === undefined) {
 				return;
@@ -70,6 +91,29 @@ const PatchFileNavigatorTree = ({
 			};
 		},
 	});
+	const selectedTreePath = patchFileNavigatorTreePathForFileKey(
+		model,
+		selectedFileKey
+	);
+
+	useEffect(() => {
+		const currentSelectedPaths = treeModel.getSelectedPaths();
+		if (areSelectedTreePathsEqual(currentSelectedPaths, selectedTreePath)) {
+			return;
+		}
+
+		isSyncingCurrentSelection.current = true;
+		try {
+			for (const path of currentSelectedPaths) {
+				treeModel.getItem(path)?.deselect();
+			}
+			if (selectedTreePath !== undefined) {
+				treeModel.getItem(selectedTreePath)?.select();
+			}
+		} finally {
+			isSyncingCurrentSelection.current = false;
+		}
+	}, [selectedTreePath, treeModel]);
 
 	return (
 		<FileTree
@@ -83,6 +127,7 @@ const PatchFileNavigatorTree = ({
 export const PatchFileNavigatorSidebar = ({
 	model,
 	onSelectFileKey,
+	selectedFileKey,
 }: PatchFileNavigatorProps) => (
 	<aside
 		aria-labelledby="patch-file-navigator-heading"
@@ -98,6 +143,7 @@ export const PatchFileNavigatorSidebar = ({
 			key={patchFileNavigatorTreeKeyFor(model)}
 			model={model}
 			onSelectFileKey={onSelectFileKey}
+			selectedFileKey={selectedFileKey}
 		/>
 	</aside>
 );
