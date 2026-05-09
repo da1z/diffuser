@@ -520,6 +520,7 @@ export const ContinuousPatchDiff = ({
 				fileMetadataByKey={navigatorFileMetadataByKey}
 				model={navigatorModel}
 				onSelectFileKey={selectNavigatorFileKey}
+				selectedFileKey={selectedNavigatorFileKey}
 			/>
 			<div className="continuous-diff-view">
 				{interaction.files.map((file) => {
