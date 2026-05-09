@@ -9,7 +9,7 @@ import {
 	type FileDiffMetadata,
 	type FileDiffProps,
 } from "@pierre/diffs/react";
-import { IconCheckboxFill, IconSquircleLg } from "@pierre/icons";
+import { IconCheckboxFill, IconChevronSm, IconSquircleLg } from "@pierre/icons";
 import { type ComponentType, useEffect, useMemo, useState } from "react";
 
 import { formatCommentAnchorLocation } from "./comment-anchor-location";
@@ -116,23 +116,24 @@ const parsedFileDiffsFor = (patch: string) =>
 
 interface FileCollapseToggleProps {
 	readonly collapsed: boolean;
-	readonly label: string;
 	readonly onToggle: () => void;
 }
 
 const FileCollapseToggle = ({
 	collapsed,
-	label,
 	onToggle,
 }: FileCollapseToggleProps) => (
 	<button
-		aria-expanded={!collapsed}
-		aria-label={`Toggle ${label} collapsed`}
-		className="file-collapse-toggle"
+		aria-label={collapsed ? "Expand file" : "Collapse file"}
+		aria-pressed={collapsed}
+		className="inline-flex size-6 cursor-pointer items-center justify-center rounded-md text-white/65 transition hover:bg-white/10 hover:text-white"
 		onClick={onToggle}
+		style={{ marginLeft: -5 }}
 		type="button"
 	>
-		{collapsed ? "+" : "-"}
+		<IconChevronSm
+			className={`transition-transform ${collapsed ? "-rotate-90" : ""}`}
+		/>
 	</button>
 );
 
@@ -580,7 +581,6 @@ export const ContinuousPatchDiff = ({
 						renderHeaderPrefix={() => (
 							<FileCollapseToggle
 								collapsed={fileReviewState.collapsed}
-								label={label}
 								onToggle={() => {
 									toggleCollapsed(fileDiff, index);
 								}}

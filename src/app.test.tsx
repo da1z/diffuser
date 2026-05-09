@@ -178,6 +178,19 @@ const fileProbeFor = (container: Element, fileName: string, occurrence = 0) =>
 		container.querySelectorAll<HTMLElement>(`[data-file="${fileName}"]`)
 	)[occurrence];
 
+const fileCollapseToggleFor = (
+	container: Element,
+	fileName: string,
+	occurrence = 0
+) =>
+	fileProbeFor(
+		container,
+		fileName,
+		occurrence
+	)?.querySelector<HTMLButtonElement>(
+		'button[aria-label="Collapse file"], button[aria-label="Expand file"]'
+	);
+
 const fileDraftReviewCommentCountTextFor = (
 	container: Element,
 	fileName: string,
@@ -572,14 +585,8 @@ test("keeps viewed and collapsed file state independent in the Local Review UI",
 		container.querySelector<HTMLElement>('[data-file="a.txt"]');
 	const viewed = () => viewedControlFor(container, "a.txt");
 	const secondViewed = () => viewedControlFor(container, "b.txt");
-	const collapseToggle = () =>
-		container.querySelector<HTMLButtonElement>(
-			'button[aria-label="Toggle a.txt collapsed"]'
-		);
-	const secondCollapseToggle = () =>
-		container.querySelector<HTMLButtonElement>(
-			'button[aria-label="Toggle b.txt collapsed"]'
-		);
+	const collapseToggle = () => fileCollapseToggleFor(container, "a.txt");
+	const secondCollapseToggle = () => fileCollapseToggleFor(container, "b.txt");
 
 	expect(
 		container.querySelectorAll('input[type="checkbox"][aria-label$="viewed"]')
@@ -798,14 +805,8 @@ test("surfaces per-file Draft Review Comment counts independently from viewed an
 	const bFile = () => fileProbeFor(container, "b.txt");
 	const aViewed = () => viewedControlFor(container, "a.txt");
 	const bViewed = () => viewedControlFor(container, "b.txt");
-	const aCollapseToggle = () =>
-		container.querySelector<HTMLButtonElement>(
-			'button[aria-label="Toggle a.txt collapsed"]'
-		);
-	const bCollapseToggle = () =>
-		container.querySelector<HTMLButtonElement>(
-			'button[aria-label="Toggle b.txt collapsed"]'
-		);
+	const aCollapseToggle = () => fileCollapseToggleFor(container, "a.txt");
+	const bCollapseToggle = () => fileCollapseToggleFor(container, "b.txt");
 	const clearDraftReviewCommentsButton = () =>
 		clearDraftReviewCommentsButtonFor(container);
 
@@ -1096,9 +1097,7 @@ test("default-collapses large rendered file diffs without marking them viewed", 
 		container.querySelector<HTMLElement>('[data-file="large.txt"]');
 	const largeViewed = () => viewedControlFor(container, "large.txt");
 	const largeCollapseToggle = () =>
-		container.querySelector<HTMLButtonElement>(
-			'button[aria-label="Toggle large.txt collapsed"]'
-		);
+		fileCollapseToggleFor(container, "large.txt");
 
 	expect(largeFile()?.dataset.collapsed).toBe("true");
 	expect(viewedControlPressedState(largeViewed())).toBe("false");
