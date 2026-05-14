@@ -15,6 +15,7 @@ import {
 	copyReviewErrorMessage,
 } from "./draft-review-comment-copy-clear-policy";
 import { LARGE_RENDERED_FILE_DIFF_ROW_THRESHOLD } from "./file-review-state";
+import { draftReviewCommentPersistenceStorageKey } from "./local-comment-persistence";
 import { patchFileNavigatorModelFor } from "./patch-file-navigator";
 import { PatchFileNavigatorSidebar } from "./patch-file-navigator-view";
 import {
@@ -881,6 +882,86 @@ test("restores submitted Draft Review Comments for the same Repository Context a
 	expect(
 		fileDraftReviewCommentCountTextFor(secondRender.container, "a.txt")
 	).toBe("1 comment");
+
+	act(() => {
+		secondRender.root.unmount();
+	});
+});
+
+test("shows a warning when Draft Review Comment persistence writes fail", () => {
+	const repositoryContext = reviewSession().context.repository;
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+	const originalSetItem = window.localStorage.setItem.bind(window.localStorage);
+
+	Object.defineProperty(window.localStorage, "setItem", {
+		configurable: true,
+		value: () => {
+			throw new Error("Storage quota exceeded.");
+		},
+	});
+
+	submitDraftReviewComment(container, "Survives failed save.");
+
+	expect(container.textContent).toContain("Survives failed save.");
+	expect(container.textContent).toContain("could not be saved in this browser");
+
+	Object.defineProperty(window.localStorage, "setItem", {
+		configurable: true,
+		value: originalSetItem,
+	});
+
+	act(() => {
+		root.unmount();
+	});
+});
+
+test("ignores future-version persistence bytes and does not overwrite them on save", () => {
+	const repositoryContext = reviewSession().context.repository;
+	const persistenceKey = draftReviewCommentPersistenceStorageKey({
+		patch: multiFilePatch,
+		repositoryContext,
+	});
+	const futurePayload = JSON.stringify({
+		comments: [],
+		version: 2,
+	});
+	const firstRender = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+
+	act(() => {
+		firstRender.root.unmount();
+	});
+
+	window.localStorage.setItem(persistenceKey, futurePayload);
+
+	const secondRender = renderInCurrentInteractiveWindow(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+
+	submitDraftReviewComment(secondRender.container, "Survives foreign version.");
+
+	expect(secondRender.container.textContent).toContain(
+		"Survives foreign version."
+	);
+	expect(secondRender.container.textContent).toContain(
+		"could not be saved in this browser"
+	);
+	expect(window.localStorage.getItem(persistenceKey)).toBe(futurePayload);
 
 	act(() => {
 		secondRender.root.unmount();

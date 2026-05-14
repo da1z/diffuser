@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 
 import {
 	clearPersistedDraftReviewComments,
+	draftReviewCommentPersistenceStorageKey,
 	loadPersistedDraftReviewComments,
 	savePersistedDraftReviewComments,
 } from "./local-comment-persistence";
@@ -133,4 +134,73 @@ test("ignores unreadable records and reports failed persistence writes", () => {
 	expect(savePersistedDraftReviewComments(scope, [comment])).toMatchObject({
 		ok: false,
 	});
+});
+
+test("ignores malformed persisted records without deleting them", () => {
+	const storage = memoryStorage();
+	const scope = {
+		patch,
+		repositoryContext,
+		storage,
+	};
+	const key = draftReviewCommentPersistenceStorageKey(scope);
+	const corrupted = "not-json";
+	storage.setItem(key, corrupted);
+
+	expect(loadPersistedDraftReviewComments(scope)).toEqual([]);
+	const saveResult = savePersistedDraftReviewComments(scope, [comment]);
+	expect(saveResult.ok).toBe(false);
+	expect(storage.value(key)).toBe(corrupted);
+});
+
+test("ignores unsupported schema versions without overwriting stored bytes", () => {
+	const storage = memoryStorage();
+	const scope = {
+		patch,
+		repositoryContext,
+		storage,
+	};
+	const key = draftReviewCommentPersistenceStorageKey(scope);
+	const futureRecord = JSON.stringify({
+		comments: [],
+		version: 99,
+	});
+	storage.setItem(key, futureRecord);
+
+	expect(loadPersistedDraftReviewComments(scope)).toEqual([]);
+	expect(savePersistedDraftReviewComments(scope, [comment]).ok).toBe(false);
+	expect(storage.value(key)).toBe(futureRecord);
+});
+
+test("does not remove ignored records when clearing persisted comments", () => {
+	const storage = memoryStorage();
+	const scope = {
+		patch,
+		repositoryContext,
+		storage,
+	};
+	const key = draftReviewCommentPersistenceStorageKey(scope);
+	const futureRecord = JSON.stringify({ comments: [], version: 2 });
+	storage.setItem(key, futureRecord);
+
+	expect(clearPersistedDraftReviewComments(scope).ok).toBe(true);
+	expect(storage.value(key)).toBe(futureRecord);
+});
+
+test("returns an empty list when stored comments fail structural validation", () => {
+	const storage = memoryStorage();
+	const scope = {
+		patch,
+		repositoryContext,
+		storage,
+	};
+	storage.setItem(
+		draftReviewCommentPersistenceStorageKey(scope),
+		JSON.stringify({
+			comments: [{ id: "x", body: "y" }],
+			version: 1,
+		})
+	);
+
+	expect(loadPersistedDraftReviewComments(scope)).toEqual([]);
 });

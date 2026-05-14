@@ -27,6 +27,14 @@ interface PersistedDraftReviewCommentsRecord {
 	readonly version: 1;
 }
 
+type RawPersistedDraftReviewClassification =
+	| { readonly kind: "absent" }
+	| { readonly kind: "v1"; readonly record: PersistedDraftReviewCommentsRecord }
+	| {
+			readonly kind: "preserve";
+			readonly reason: "malformed" | "unsupported-version";
+		};
+
 const persistedDraftReviewCommentsSchemaVersion = 1;
 
 const storageKeyPrefix = "diffuser:draft-review-comments:v1";
@@ -53,7 +61,7 @@ const repositoryContextIdentity = ({
 		workingDirectory,
 	});
 
-const persistedDraftReviewCommentsStorageKey = ({
+export const draftReviewCommentPersistenceStorageKey = ({
 	patch,
 	repositoryContext,
 }: Omit<DraftReviewCommentPersistenceScope, "storage">) =>
@@ -92,29 +100,48 @@ const isSubmittedDraftReviewComment = (
 	isSafeInteger(value.order) &&
 	isDraftReviewCommentAnchor(value.anchor);
 
-const parsePersistedDraftReviewCommentsRecord = (
-	rawRecord: string
-): PersistedDraftReviewCommentsRecord | undefined => {
+const classifyRawPersistedDraftReviewRecord = (
+	rawRecord: string | null
+): RawPersistedDraftReviewClassification => {
+	if (rawRecord === null) {
+		return { kind: "absent" };
+	}
+
 	let value: unknown;
 
 	try {
 		value = JSON.parse(rawRecord);
 	} catch {
-		return;
+		return { kind: "preserve", reason: "malformed" };
+	}
+
+	if (!isRecord(value)) {
+		return { kind: "preserve", reason: "malformed" };
+	}
+
+	if (!isSafeInteger(value.version)) {
+		return { kind: "preserve", reason: "malformed" };
+	}
+
+	if (value.version !== persistedDraftReviewCommentsSchemaVersion) {
+		return { kind: "preserve", reason: "unsupported-version" };
 	}
 
 	if (
-		!isRecord(value) ||
-		value.version !== persistedDraftReviewCommentsSchemaVersion ||
-		!Array.isArray(value.comments) ||
-		!value.comments.every(isSubmittedDraftReviewComment)
+		!(
+			Array.isArray(value.comments) &&
+			value.comments.every(isSubmittedDraftReviewComment)
+		)
 	) {
-		return;
+		return { kind: "preserve", reason: "malformed" };
 	}
 
 	return {
-		comments: value.comments,
-		version: persistedDraftReviewCommentsSchemaVersion,
+		kind: "v1",
+		record: {
+			comments: value.comments,
+			version: persistedDraftReviewCommentsSchemaVersion,
+		},
 	};
 };
 
@@ -125,26 +152,56 @@ export const loadPersistedDraftReviewComments = (
 
 	try {
 		rawRecord = scope.storage.getItem(
-			persistedDraftReviewCommentsStorageKey(scope)
+			draftReviewCommentPersistenceStorageKey(scope)
 		);
 	} catch {
 		return [];
 	}
 
-	if (rawRecord === null) {
-		return [];
+	const classification = classifyRawPersistedDraftReviewRecord(rawRecord);
+
+	if (classification.kind === "v1") {
+		return classification.record.comments;
 	}
 
-	return parsePersistedDraftReviewCommentsRecord(rawRecord)?.comments ?? [];
+	return [];
 };
 
 export const savePersistedDraftReviewComments = (
 	scope: DraftReviewCommentPersistenceScope,
 	comments: readonly SubmittedDraftReviewComment[]
 ): PersistDraftReviewCommentsResult => {
+	let rawRecord: string | null;
+
+	try {
+		rawRecord = scope.storage.getItem(
+			draftReviewCommentPersistenceStorageKey(scope)
+		);
+	} catch (error) {
+		return { error, ok: false };
+	}
+
+	const classification = classifyRawPersistedDraftReviewRecord(rawRecord);
+
+	if (classification.kind === "preserve") {
+		let message: string;
+
+		if (classification.reason === "unsupported-version") {
+			message =
+				"Persisted draft review comments use an unsupported storage version.";
+		} else {
+			message = "Persisted draft review comments record is unreadable.";
+		}
+
+		return {
+			error: new Error(message),
+			ok: false,
+		};
+	}
+
 	try {
 		scope.storage.setItem(
-			persistedDraftReviewCommentsStorageKey(scope),
+			draftReviewCommentPersistenceStorageKey(scope),
 			JSON.stringify({
 				comments,
 				version: persistedDraftReviewCommentsSchemaVersion,
@@ -160,8 +217,24 @@ export const savePersistedDraftReviewComments = (
 export const clearPersistedDraftReviewComments = (
 	scope: DraftReviewCommentPersistenceScope
 ): PersistDraftReviewCommentsResult => {
+	let rawRecord: string | null;
+
 	try {
-		scope.storage.removeItem(persistedDraftReviewCommentsStorageKey(scope));
+		rawRecord = scope.storage.getItem(
+			draftReviewCommentPersistenceStorageKey(scope)
+		);
+	} catch (error) {
+		return { error, ok: false };
+	}
+
+	const classification = classifyRawPersistedDraftReviewRecord(rawRecord);
+
+	if (classification.kind === "preserve") {
+		return { ok: true };
+	}
+
+	try {
+		scope.storage.removeItem(draftReviewCommentPersistenceStorageKey(scope));
 	} catch (error) {
 		return { error, ok: false };
 	}
