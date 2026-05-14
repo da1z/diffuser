@@ -40,6 +40,17 @@ import {
 	type RepositoryContext,
 	savePersistedDraftReviewComments,
 } from "./local-comment-persistence";
+import { patchFileNavigatorModelFor } from "./patch-file-navigator";
+import {
+	type PatchFileNavigatorFileMetadataByKey,
+	PatchFileNavigatorSidebar,
+} from "./patch-file-navigator-view";
+import type {
+	DraftReviewCommentAnchor,
+	SubmittedDraftReviewComment,
+} from "./review-comments";
+import { draftReviewCommentStateWithSubmittedComments } from "./review-comments";
+import "./index.css";
 
 type PatchPersistence =
 	| { readonly kind: "none" }
@@ -47,7 +58,7 @@ type PatchPersistence =
 	| {
 			readonly kind: "ready";
 			readonly scope: DraftReviewCommentPersistenceScope;
-	  };
+		};
 
 type PersistenceWarningSync =
 	| { readonly kind: "unchanged" }
@@ -55,6 +66,14 @@ type PersistenceWarningSync =
 
 const draftReviewCommentPersistenceFailureMessage =
 	"Draft comments could not be saved in this browser. They will be lost if you reload the page.";
+
+const persistenceWarningUnlessOk = (ok: boolean): string | undefined => {
+	if (ok) {
+		return undefined;
+	}
+
+	return draftReviewCommentPersistenceFailureMessage;
+};
 
 const patchPersistenceFor = (
 	patch: string,
@@ -77,18 +96,6 @@ const patchPersistenceFor = (
 		return { kind: "storage-unavailable" };
 	}
 };
-
-import { patchFileNavigatorModelFor } from "./patch-file-navigator";
-import {
-	type PatchFileNavigatorFileMetadataByKey,
-	PatchFileNavigatorSidebar,
-} from "./patch-file-navigator-view";
-import type {
-	DraftReviewCommentAnchor,
-	SubmittedDraftReviewComment,
-} from "./review-comments";
-import { draftReviewCommentStateWithSubmittedComments } from "./review-comments";
-import "./index.css";
 
 export interface AppProps {
 	readonly initialSession?: ReviewSession;
@@ -517,8 +524,8 @@ export const ContinuousPatchDiff = ({
 		setInteraction(cancelContinuousDiffViewDraftReviewComment);
 	};
 	const submitActiveDraftReviewComment = (body: string) => {
-		const persistOutcome: { current: "fail" | "ok" | "skipped" } = {
-			current: "skipped",
+		const submitPersistenceResult = {
+			outcome: "skipped" as "fail" | "ok" | "skipped",
 		};
 
 		flushSync(() => {
@@ -531,18 +538,18 @@ export const ContinuousPatchDiff = ({
 						persistence.scope,
 						next.draftReviewCommentState.submittedComments
 					);
-					persistOutcome.current = result.ok ? "ok" : "fail";
+					submitPersistenceResult.outcome = result.ok ? "ok" : "fail";
 				} else if (persistence.kind === "storage-unavailable") {
-					persistOutcome.current = "fail";
+					submitPersistenceResult.outcome = "fail";
 				}
 
 				return next;
 			});
 		});
 
-		if (persistOutcome.current === "ok") {
+		if (submitPersistenceResult.outcome === "ok") {
 			setPersistenceWarning(undefined);
-		} else if (persistOutcome.current === "fail") {
+		} else if (submitPersistenceResult.outcome === "fail") {
 			setPersistenceWarning(draftReviewCommentPersistenceFailureMessage);
 		}
 	};
@@ -572,9 +579,7 @@ export const ContinuousPatchDiff = ({
 
 			return {
 				kind: "set",
-				message: cleared.ok
-					? undefined
-					: draftReviewCommentPersistenceFailureMessage,
+				message: persistenceWarningUnlessOk(cleared.ok),
 			};
 		}
 
@@ -585,9 +590,7 @@ export const ContinuousPatchDiff = ({
 
 		return {
 			kind: "set",
-			message: saved.ok
-				? undefined
-				: draftReviewCommentPersistenceFailureMessage,
+			message: persistenceWarningUnlessOk(saved.ok),
 		};
 	};
 	const applyPersistenceWarningSync = (sync: PersistenceWarningSync) => {

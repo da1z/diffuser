@@ -33,7 +33,7 @@ type RawPersistedDraftReviewClassification =
 	| {
 			readonly kind: "preserve";
 			readonly reason: "malformed" | "unsupported-version";
-	  };
+		};
 
 const persistedDraftReviewCommentsSchemaVersion = 1;
 
@@ -123,10 +123,6 @@ const classifyRawPersistedDraftReviewRecord = (
 		return { kind: "preserve", reason: "malformed" };
 	}
 
-	if (value.version > persistedDraftReviewCommentsSchemaVersion) {
-		return { kind: "preserve", reason: "unsupported-version" };
-	}
-
 	if (value.version !== persistedDraftReviewCommentsSchemaVersion) {
 		return { kind: "preserve", reason: "unsupported-version" };
 	}
@@ -164,7 +160,11 @@ export const loadPersistedDraftReviewComments = (
 
 	const classification = classifyRawPersistedDraftReviewRecord(rawRecord);
 
-	return classification.kind === "v1" ? classification.record.comments : [];
+	if (classification.kind === "v1") {
+		return classification.record.comments;
+	}
+
+	return [];
 };
 
 export const savePersistedDraftReviewComments = (
@@ -184,12 +184,17 @@ export const savePersistedDraftReviewComments = (
 	const classification = classifyRawPersistedDraftReviewRecord(rawRecord);
 
 	if (classification.kind === "preserve") {
+		let message: string;
+
+		if (classification.reason === "unsupported-version") {
+			message =
+				"Persisted draft review comments use an unsupported storage version.";
+		} else {
+			message = "Persisted draft review comments record is unreadable.";
+		}
+
 		return {
-			error: new Error(
-				classification.reason === "unsupported-version"
-					? "Persisted draft review comments use an unsupported storage version."
-					: "Persisted draft review comments record is unreadable."
-			),
+			error: new Error(message),
 			ok: false,
 		};
 	}
