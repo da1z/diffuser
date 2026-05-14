@@ -1,9 +1,10 @@
-import type { SubmittedDraftReviewComment } from "./review-comments";
+import type { ReviewSession } from "./diffuser/workflow";
+import type {
+	DraftReviewCommentAnchor,
+	SubmittedDraftReviewComment,
+} from "./review-comments";
 
-export interface RepositoryContext {
-	readonly root: string;
-	readonly workingDirectory: string;
-}
+export type RepositoryContext = ReviewSession["context"]["repository"];
 
 export interface LocalCommentStorage {
 	readonly getItem: (key: string) => string | null;
@@ -30,7 +31,7 @@ const persistedDraftReviewCommentsSchemaVersion = 1;
 
 const storageKeyPrefix = "diffuser:draft-review-comments:v1";
 
-const stableHash = (value: string) => {
+const stableStorageKeyHash = (value: string) => {
 	let hash = 14695981039346656037n;
 	const prime = 1099511628211n;
 	const modulus = 18_446_744_073_709_551_616n;
@@ -58,8 +59,8 @@ const persistedDraftReviewCommentsStorageKey = ({
 }: Omit<DraftReviewCommentPersistenceScope, "storage">) =>
 	[
 		storageKeyPrefix,
-		stableHash(repositoryContextIdentity(repositoryContext)),
-		stableHash(patch),
+		stableStorageKeyHash(repositoryContextIdentity(repositoryContext)),
+		stableStorageKeyHash(patch),
 	].join(":");
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -70,28 +71,26 @@ const isString = (value: unknown): value is string => typeof value === "string";
 const isSafeInteger = (value: unknown): value is number =>
 	Number.isSafeInteger(value);
 
+const isDraftReviewCommentAnchor = (
+	value: unknown
+): value is DraftReviewCommentAnchor =>
+	isRecord(value) &&
+	isString(value.fileKey) &&
+	isSafeInteger(value.fileOrder) &&
+	isString(value.path) &&
+	isSafeInteger(value.position) &&
+	(value.side === "new" || value.side === "old-deleted") &&
+	isSafeInteger(value.startLine) &&
+	isSafeInteger(value.endLine);
+
 const isSubmittedDraftReviewComment = (
 	value: unknown
-): value is SubmittedDraftReviewComment => {
-	if (!(isRecord(value) && isRecord(value.anchor))) {
-		return false;
-	}
-
-	const { anchor } = value;
-
-	return (
-		isString(value.id) &&
-		isString(value.body) &&
-		isSafeInteger(value.order) &&
-		isString(anchor.fileKey) &&
-		isSafeInteger(anchor.fileOrder) &&
-		isString(anchor.path) &&
-		isSafeInteger(anchor.position) &&
-		(anchor.side === "new" || anchor.side === "old-deleted") &&
-		isSafeInteger(anchor.startLine) &&
-		isSafeInteger(anchor.endLine)
-	);
-};
+): value is SubmittedDraftReviewComment =>
+	isRecord(value) &&
+	isString(value.id) &&
+	isString(value.body) &&
+	isSafeInteger(value.order) &&
+	isDraftReviewCommentAnchor(value.anchor);
 
 const parsePersistedDraftReviewCommentsRecord = (
 	rawRecord: string

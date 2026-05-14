@@ -132,9 +132,22 @@ const reviewSession = (
 const renderReviewSession = (session: ReviewSession) =>
 	renderToStaticMarkup(<App initialSession={session} />);
 
-const renderInteractive = (children: ReactNode) => {
+const renderInCurrentInteractiveWindow = (children: ReactNode) => {
+	const container = document.createElement("div");
+	document.body.append(container);
+	const root = createRoot(container);
+
+	act(() => {
+		root.render(children);
+	});
+
+	return { container, root };
+};
+
+const installInteractiveWindow = () => {
 	const window = new Window({ url: "http://localhost" });
 	window.SyntaxError = SyntaxError;
+
 	Object.assign(globalThis, {
 		IS_REACT_ACT_ENVIRONMENT: true,
 		window,
@@ -154,28 +167,12 @@ const renderInteractive = (children: ReactNode) => {
 		ResizeObserver: window.ResizeObserver,
 		ShadowRoot: window.ShadowRoot,
 	});
-
-	const container = document.createElement("div");
-	document.body.append(container);
-	const root = createRoot(container);
-
-	act(() => {
-		root.render(children);
-	});
-
-	return { container, root };
 };
 
-const renderInCurrentInteractiveWindow = (children: ReactNode) => {
-	const container = document.createElement("div");
-	document.body.append(container);
-	const root = createRoot(container);
+const renderInteractive = (children: ReactNode) => {
+	installInteractiveWindow();
 
-	act(() => {
-		root.render(children);
-	});
-
-	return { container, root };
+	return renderInCurrentInteractiveWindow(children);
 };
 
 const viewedControlFor = (container: Element, label: string) =>
