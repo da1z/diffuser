@@ -8,6 +8,7 @@ import {
 	deleteSubmittedDraftReviewComment,
 	draftReviewCommentAnchorForSelection,
 	draftReviewCommentCountByFileKey,
+	draftReviewCommentStateWithSubmittedComments,
 	submitDraftReviewComment,
 } from "./review-comments";
 
@@ -80,6 +81,29 @@ test("stores non-empty Draft Review Comments and ignores blank submissions", () 
 		},
 	]);
 	expect(afterComment.nextCommentId).toBe(2);
+});
+
+test("normalizes restored Draft Review Comments into canonical submission order", () => {
+	const state = draftReviewCommentStateWithSubmittedComments([
+		{
+			anchor,
+			body: "Second submission.",
+			id: "draft-review-comment-2",
+			order: 2,
+		},
+		{
+			anchor,
+			body: "First submission.",
+			id: "draft-review-comment-1",
+			order: 1,
+		},
+	]);
+
+	expect(state.submittedComments.map((comment) => comment.body)).toEqual([
+		"First submission.",
+		"Second submission.",
+	]);
+	expect(state.nextCommentId).toBe(3);
 });
 
 test("keeps duplicate anchors independent and counts submitted comments per file", () => {

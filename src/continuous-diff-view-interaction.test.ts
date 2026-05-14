@@ -184,6 +184,70 @@ test("initializes restored Draft Review Comments without reusing comment identif
 	]);
 });
 
+test("normalizes persisted comment array order and avoids identifier collisions after restore", () => {
+	const [file] = createContinuousDiffViewInteraction(draftCommentPatch).files;
+
+	if (file === undefined) {
+		throw new Error("Expected one parsed Patch file.");
+	}
+
+	const sharedAnchor = {
+		endLine: 4,
+		fileKey: file.key,
+		fileOrder: 0,
+		path: "new-name.txt",
+		position: 1,
+		side: "new" as const,
+		startLine: 2,
+	};
+
+	const initial = createContinuousDiffViewInteraction(
+		draftCommentPatch,
+		draftReviewCommentStateWithSubmittedComments([
+			{
+				anchor: sharedAnchor,
+				body: "Later in storage array.",
+				id: "draft-review-comment-2",
+				order: 2,
+			},
+			{
+				anchor: sharedAnchor,
+				body: "Earlier in storage array.",
+				id: "draft-review-comment-1",
+				order: 1,
+			},
+		])
+	);
+
+	expect(
+		initial.draftReviewCommentState.submittedComments.map(
+			(comment) => comment.body
+		)
+	).toEqual(["Earlier in storage array.", "Later in storage array."]);
+
+	const selected = selectContinuousDiffViewLines(initial, file.key, {
+		end: 3,
+		side: "additions",
+		start: 3,
+	});
+	const submitted = submitContinuousDiffViewDraftReviewComment(
+		selected,
+		"New comment after restore."
+	);
+
+	expect(
+		submitted.draftReviewCommentState.submittedComments.map((comment) => [
+			comment.id,
+			comment.order,
+			comment.body,
+		])
+	).toEqual([
+		["draft-review-comment-1", 1, "Earlier in storage array."],
+		["draft-review-comment-2", 2, "Later in storage array."],
+		["draft-review-comment-3", 3, "New comment after restore."],
+	]);
+});
+
 test("owns Review Summary copy and clear confirmation policy", async () => {
 	const initial = createContinuousDiffViewInteraction(multiFilePatch);
 	const [file] = initial.files;
