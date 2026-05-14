@@ -213,6 +213,25 @@ const clickCopyReview = async (container: Element) => {
 	});
 };
 
+const discardDraftReviewCommentContaining = (
+	container: Element,
+	bodySubstring: string
+) => {
+	const discardButton = Array.from(
+		container.querySelectorAll<HTMLButtonElement>(
+			'button[aria-label="Discard draft review comment"]'
+		)
+	).find((button) =>
+		button
+			.closest(".draft-review-comment")
+			?.textContent?.includes(bodySubstring)
+	);
+
+	act(() => {
+		discardButton?.click();
+	});
+};
+
 const clearDraftReviewCommentsButtonFor = (container: Element) =>
 	container.querySelector<HTMLButtonElement>(
 		'button[aria-label="Clear draft review comments"]'
@@ -901,6 +920,175 @@ test("removes persisted Draft Review Comments after successful Review Summary co
 
 	expect(secondRender.container.textContent).not.toContain(
 		"Copy clears persistence."
+	);
+	expect(secondRender.container.textContent).not.toContain("Copy review");
+
+	act(() => {
+		secondRender.root.unmount();
+	});
+});
+
+test("keeps persisted Draft Review Comments after failed Review Summary copy", async () => {
+	const repositoryContext = reviewSession().context.repository;
+	const firstRender = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+	stubClipboard({
+		writeText: () => Promise.reject(new Error("Clipboard blocked.")),
+	});
+
+	submitDraftReviewComment(
+		firstRender.container,
+		"Failed copy preserves persistence mirror."
+	);
+
+	await clickCopyReview(firstRender.container);
+	expect(firstRender.container.textContent).toContain(
+		"Failed copy preserves persistence mirror."
+	);
+	expect(firstRender.container.textContent).toContain(copyReviewErrorMessage);
+
+	act(() => {
+		firstRender.root.unmount();
+	});
+
+	const secondRender = renderInCurrentInteractiveWindow(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+
+	expect(secondRender.container.textContent).toContain(
+		"Failed copy preserves persistence mirror."
+	);
+	expect(secondRender.container.textContent).toContain("1 draft comment");
+
+	act(() => {
+		secondRender.root.unmount();
+	});
+});
+
+test("removes one persisted Draft Review Comment when discarding that comment", () => {
+	const repositoryContext = reviewSession().context.repository;
+	const firstRender = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+
+	submitDraftReviewComment(firstRender.container, "Keep after reload.", {
+		fileName: "a.txt",
+	});
+	submitDraftReviewComment(firstRender.container, "Discard before reload.", {
+		fileName: "b.txt",
+	});
+
+	expect(firstRender.container.textContent).toContain("2 draft comments");
+
+	discardDraftReviewCommentContaining(
+		firstRender.container,
+		"Discard before reload."
+	);
+
+	expect(firstRender.container.textContent).toContain("Keep after reload.");
+	expect(firstRender.container.textContent).not.toContain(
+		"Discard before reload."
+	);
+
+	act(() => {
+		firstRender.root.unmount();
+	});
+
+	const secondRender = renderInCurrentInteractiveWindow(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+
+	expect(secondRender.container.textContent).toContain("Keep after reload.");
+	expect(secondRender.container.textContent).not.toContain(
+		"Discard before reload."
+	);
+	expect(secondRender.container.textContent).toContain("1 draft comment");
+
+	act(() => {
+		secondRender.root.unmount();
+	});
+});
+
+test("removes persisted Draft Review Comments after clear-all confirms", () => {
+	const confirmationMessages: string[] = [];
+	let shouldConfirm = false;
+	const repositoryContext = reviewSession().context.repository;
+
+	const firstRender = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+
+	Object.defineProperty(window, "confirm", {
+		configurable: true,
+		value: (message: string) => {
+			confirmationMessages.push(message);
+
+			return shouldConfirm;
+		},
+	});
+
+	submitDraftReviewComment(firstRender.container, "Clear resets persistence.");
+
+	act(() => {
+		clearDraftReviewCommentsButtonFor(firstRender.container)?.click();
+	});
+
+	expect(firstRender.container.textContent).toContain(
+		"Clear resets persistence."
+	);
+	expect(confirmationMessages).toEqual([
+		clearDraftReviewCommentsConfirmationMessage,
+	]);
+
+	shouldConfirm = true;
+	act(() => {
+		clearDraftReviewCommentsButtonFor(firstRender.container)?.click();
+	});
+
+	expect(confirmationMessages).toEqual([
+		clearDraftReviewCommentsConfirmationMessage,
+		clearDraftReviewCommentsConfirmationMessage,
+	]);
+	expect(firstRender.container.textContent).not.toContain(
+		"Clear resets persistence."
+	);
+	expect(firstRender.container.textContent).not.toContain("Copy review");
+
+	act(() => {
+		firstRender.root.unmount();
+	});
+
+	const secondRender = renderInCurrentInteractiveWindow(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+
+	expect(secondRender.container.textContent).not.toContain(
+		"Clear resets persistence."
 	);
 	expect(secondRender.container.textContent).not.toContain("Copy review");
 
