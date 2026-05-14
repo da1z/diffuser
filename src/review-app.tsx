@@ -10,7 +10,11 @@ import {
 	useState,
 } from "react";
 import { flushSync } from "react-dom";
-
+import {
+	type BasicReviewUiInteraction,
+	createBasicReviewUiInteractionFromPatch,
+	type LocalCommentPersistenceLoadAdapter,
+} from "./basic-review-ui-interaction";
 import { formatCommentAnchorLocation } from "./comment-anchor-location";
 import {
 	type ContinuousDiffViewInteraction,
@@ -20,7 +24,6 @@ import {
 	continuousDiffViewFileState,
 	continuousDiffViewSelectedLinesForFile,
 	copyContinuousDiffViewReview,
-	createContinuousDiffViewInteraction,
 	deleteContinuousDiffViewDraftReviewComment,
 	markContinuousDiffViewFileViewed,
 	selectContinuousDiffViewLines,
@@ -49,7 +52,6 @@ import type {
 	DraftReviewCommentAnchor,
 	SubmittedDraftReviewComment,
 } from "./review-comments";
-import { draftReviewCommentStateWithSubmittedComments } from "./review-comments";
 import "./index.css";
 
 type PatchPersistence =
@@ -63,6 +65,19 @@ type PatchPersistence =
 type PersistenceWarningSync =
 	| { readonly kind: "unchanged" }
 	| { readonly kind: "set"; readonly message: string | undefined };
+
+type DraftReviewCommentSubmitPersistenceOutcome = "fail" | "ok" | "skipped";
+
+const persistenceWarningAfterPersistenceMirrorSync = (
+	previousWarning: string | undefined,
+	sync: PersistenceWarningSync
+): string | undefined => {
+	if (sync.kind === "set") {
+		return sync.message;
+	}
+
+	return previousWarning;
+};
 
 const draftReviewCommentPersistenceFailureMessage =
 	"Draft comments could not be saved in this browser. They will be lost if you reload the page.";
@@ -95,6 +110,41 @@ const patchPersistenceFor = (
 	} catch {
 		return { kind: "storage-unavailable" };
 	}
+};
+
+const draftReviewCommentSubmitPersistenceOutcome = (
+	persistence: PatchPersistence,
+	submittedComments: readonly SubmittedDraftReviewComment[]
+): DraftReviewCommentSubmitPersistenceOutcome => {
+	if (persistence.kind === "ready") {
+		const result = savePersistedDraftReviewComments(
+			persistence.scope,
+			submittedComments
+		);
+
+		return result.ok ? "ok" : "fail";
+	}
+
+	if (persistence.kind === "storage-unavailable") {
+		return "fail";
+	}
+
+	return "skipped";
+};
+
+const persistenceWarningAfterDraftReviewSubmitOutcome = (
+	previousWarning: string | undefined,
+	outcome: DraftReviewCommentSubmitPersistenceOutcome
+): string | undefined => {
+	if (outcome === "ok") {
+		return;
+	}
+
+	if (outcome === "fail") {
+		return draftReviewCommentPersistenceFailureMessage;
+	}
+
+	return previousWarning;
 };
 
 export interface AppProps {
@@ -476,32 +526,46 @@ export const ContinuousPatchDiff = ({
 		() => patchPersistenceFor(patch, repositoryContext),
 		[patch, repositoryContext]
 	);
-	const createInteraction = useCallback(() => {
+	const createBasicReviewUi = useCallback((): BasicReviewUiInteraction => {
 		const persistence = resolvePersistence();
+		const loadAdapter: LocalCommentPersistenceLoadAdapter = {
+			loadRestoredSubmittedDraftReviewComments: () => {
+				if (persistence.kind === "ready") {
+					return loadPersistedDraftReviewComments(persistence.scope);
+				}
 
-		return createContinuousDiffViewInteraction(
-			patch,
-			draftReviewCommentStateWithSubmittedComments(
-				persistence.kind === "ready"
-					? loadPersistedDraftReviewComments(persistence.scope)
-					: []
-			)
-		);
+				return [];
+			},
+		};
+
+		return createBasicReviewUiInteractionFromPatch(patch, loadAdapter);
 	}, [patch, resolvePersistence]);
-	const [interaction, setInteraction] = useState(() => createInteraction());
-	const [persistenceWarning, setPersistenceWarning] = useState<
-		string | undefined
-	>();
+	const [basicReviewUi, setBasicReviewUi] = useState(() =>
+		createBasicReviewUi()
+	);
 	const [selectedNavigatorFileKey, setSelectedNavigatorFileKey] = useState<
 		string | undefined
 	>();
 	const fileElements = useRef(new Map<string, HTMLElement>());
 	useEffect(() => {
-		setInteraction(createInteraction());
-		setPersistenceWarning(undefined);
+		setBasicReviewUi(createBasicReviewUi());
 		setSelectedNavigatorFileKey(undefined);
 		fileElements.current.clear();
-	}, [createInteraction]);
+	}, [createBasicReviewUi]);
+
+	const interaction = basicReviewUi.continuousDiffView;
+	const persistenceWarning = basicReviewUi.persistenceWarning;
+
+	const updateContinuousDiffView = (
+		updater: (
+			view: ContinuousDiffViewInteraction
+		) => ContinuousDiffViewInteraction
+	) => {
+		setBasicReviewUi((prev) => ({
+			...prev,
+			continuousDiffView: updater(prev.continuousDiffView),
+		}));
+	};
 	useEffect(() => {
 		if (selectedNavigatorFileKey === undefined) {
 			return;
@@ -524,37 +588,29 @@ export const ContinuousPatchDiff = ({
 		commentCountsByFileKey
 	);
 	const cancelDraftReviewCommentForm = () => {
-		setInteraction(cancelContinuousDiffViewDraftReviewComment);
+		updateContinuousDiffView(cancelContinuousDiffViewDraftReviewComment);
 	};
 	const submitActiveDraftReviewComment = (body: string) => {
-		const submitPersistenceResult = {
-			outcome: "skipped" as "fail" | "ok" | "skipped",
-		};
-
 		flushSync(() => {
-			setInteraction((state) => {
-				const next = submitContinuousDiffViewDraftReviewComment(state, body);
-				const persistence = resolvePersistence();
+			setBasicReviewUi((b) => {
+				const nextView = submitContinuousDiffViewDraftReviewComment(
+					b.continuousDiffView,
+					body
+				);
+				const outcome = draftReviewCommentSubmitPersistenceOutcome(
+					resolvePersistence(),
+					nextView.draftReviewCommentState.submittedComments
+				);
 
-				if (persistence.kind === "ready") {
-					const result = savePersistedDraftReviewComments(
-						persistence.scope,
-						next.draftReviewCommentState.submittedComments
-					);
-					submitPersistenceResult.outcome = result.ok ? "ok" : "fail";
-				} else if (persistence.kind === "storage-unavailable") {
-					submitPersistenceResult.outcome = "fail";
-				}
-
-				return next;
+				return {
+					continuousDiffView: nextView,
+					persistenceWarning: persistenceWarningAfterDraftReviewSubmitOutcome(
+						b.persistenceWarning,
+						outcome
+					),
+				};
 			});
 		});
-
-		if (submitPersistenceResult.outcome === "ok") {
-			setPersistenceWarning(undefined);
-		} else if (submitPersistenceResult.outcome === "fail") {
-			setPersistenceWarning(draftReviewCommentPersistenceFailureMessage);
-		}
 	};
 	const mirrorSubmittedDraftReviewCommentsToPersistence = (
 		next: ContinuousDiffViewInteraction
@@ -596,65 +652,72 @@ export const ContinuousPatchDiff = ({
 			message: persistenceWarningUnlessOk(saved.ok),
 		};
 	};
-	const applyPersistenceWarningSync = (sync: PersistenceWarningSync) => {
-		if (sync.kind === "set") {
-			setPersistenceWarning(sync.message);
-		}
-	};
 	const deleteDraftReviewComment = (commentId: string) => {
-		let sync: PersistenceWarningSync = { kind: "unchanged" };
-
 		flushSync(() => {
-			setInteraction((state) => {
-				const next = deleteContinuousDiffViewDraftReviewComment(
-					state,
+			setBasicReviewUi((b) => {
+				const nextView = deleteContinuousDiffViewDraftReviewComment(
+					b.continuousDiffView,
 					commentId
 				);
-				sync = mirrorSubmittedDraftReviewCommentsToPersistence(next);
+				const sync = mirrorSubmittedDraftReviewCommentsToPersistence(nextView);
 
-				return next;
+				return {
+					continuousDiffView: nextView,
+					persistenceWarning: persistenceWarningAfterPersistenceMirrorSync(
+						b.persistenceWarning,
+						sync
+					),
+				};
 			});
 		});
-
-		applyPersistenceWarningSync(sync);
 	};
 	const copyReview = () => {
 		copyContinuousDiffViewReview(interaction, navigator.clipboard).then(
-			(next) => {
+			(nextView) => {
 				flushSync(() => {
-					setInteraction(next);
-				});
+					setBasicReviewUi((b) => {
+						let persistenceWarning = b.persistenceWarning;
 
-				if (next.copyError === undefined) {
-					applyPersistenceWarningSync(
-						mirrorSubmittedDraftReviewCommentsToPersistence(next)
-					);
-				}
+						if (nextView.copyError === undefined) {
+							persistenceWarning = persistenceWarningAfterPersistenceMirrorSync(
+								b.persistenceWarning,
+								mirrorSubmittedDraftReviewCommentsToPersistence(nextView)
+							);
+						}
+
+						return {
+							continuousDiffView: nextView,
+							persistenceWarning,
+						};
+					});
+				});
 			}
 		);
 	};
 	const confirmClearDraftReviewComments = () => {
-		let sync: PersistenceWarningSync = { kind: "unchanged" };
-
 		flushSync(() => {
-			setInteraction((state) => {
-				const next = confirmClearContinuousDiffViewDraftReviewComments(
-					state,
+			setBasicReviewUi((b) => {
+				const nextView = confirmClearContinuousDiffViewDraftReviewComments(
+					b.continuousDiffView,
 					(message) => {
 						// biome-ignore lint/suspicious/noAlert: The PRD requires the browser confirmation dialog for clearing draft comments.
 						return window.confirm(message);
 					}
 				);
-				sync = mirrorSubmittedDraftReviewCommentsToPersistence(next);
+				const sync = mirrorSubmittedDraftReviewCommentsToPersistence(nextView);
 
-				return next;
+				return {
+					continuousDiffView: nextView,
+					persistenceWarning: persistenceWarningAfterPersistenceMirrorSync(
+						b.persistenceWarning,
+						sync
+					),
+				};
 			});
 		});
-
-		applyPersistenceWarningSync(sync);
 	};
 	const expandFileIfCollapsed = (fileKey: string) => {
-		setInteraction((state) => {
+		updateContinuousDiffView((state) => {
 			const fileReviewState = continuousDiffViewFileState(state, fileKey);
 
 			if (fileReviewState?.collapsed !== true) {
@@ -750,7 +813,7 @@ export const ContinuousPatchDiff = ({
 									collapsed: fileReviewState.collapsed,
 									enableLineSelection: true,
 									onLineSelected: (selection) => {
-										setInteraction((state) =>
+										updateContinuousDiffView((state) =>
 											selectContinuousDiffViewLines(state, file.key, selection)
 										);
 									},
@@ -761,7 +824,7 @@ export const ContinuousPatchDiff = ({
 										commentCount={fileCommentCount}
 										label={file.label}
 										onViewedChange={(viewed) => {
-											setInteraction((state) =>
+											updateContinuousDiffView((state) =>
 												markContinuousDiffViewFileViewed(
 													state,
 													file.key,
@@ -776,7 +839,7 @@ export const ContinuousPatchDiff = ({
 									<FileCollapseToggle
 										collapsed={fileReviewState.collapsed}
 										onToggle={() => {
-											setInteraction((state) =>
+											updateContinuousDiffView((state) =>
 												toggleContinuousDiffViewFileCollapsed(state, file.key)
 											);
 										}}
