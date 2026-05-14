@@ -166,6 +166,18 @@ const renderInteractive = (children: ReactNode) => {
 	return { container, root };
 };
 
+const renderInCurrentInteractiveWindow = (children: ReactNode) => {
+	const container = document.createElement("div");
+	document.body.append(container);
+	const root = createRoot(container);
+
+	act(() => {
+		root.render(children);
+	});
+
+	return { container, root };
+};
+
 const viewedControlFor = (container: Element, label: string) =>
 	container.querySelector<HTMLButtonElement>(
 		`button[aria-label="Mark ${label} viewed"]`
@@ -812,6 +824,145 @@ Please simplify this branch.`,
 
 	act(() => {
 		root.unmount();
+	});
+});
+
+test("restores submitted Draft Review Comments for the same Repository Context and Patch", () => {
+	const repositoryContext = reviewSession().context.repository;
+	const firstRender = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+
+	submitDraftReviewComment(
+		firstRender.container,
+		"Restore this submitted comment."
+	);
+	expect(firstRender.container.textContent).toContain(
+		"Restore this submitted comment."
+	);
+
+	act(() => {
+		firstRender.root.unmount();
+	});
+
+	const secondRender = renderInCurrentInteractiveWindow(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+
+	expect(secondRender.container.textContent).toContain(
+		"Restore this submitted comment."
+	);
+	expect(secondRender.container.textContent).toContain("1 draft comment");
+	expect(
+		fileDraftReviewCommentCountTextFor(secondRender.container, "a.txt")
+	).toBe("1 comment");
+
+	act(() => {
+		secondRender.root.unmount();
+	});
+});
+
+test("removes persisted Draft Review Comments after successful Review Summary copy", async () => {
+	const repositoryContext = reviewSession().context.repository;
+	const firstRender = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+	stubClipboard({
+		writeText: () => Promise.resolve(),
+	});
+
+	submitDraftReviewComment(firstRender.container, "Copy clears persistence.");
+
+	await clickCopyReview(firstRender.container);
+	expect(firstRender.container.textContent).not.toContain(
+		"Copy clears persistence."
+	);
+
+	act(() => {
+		firstRender.root.unmount();
+	});
+
+	const secondRender = renderInCurrentInteractiveWindow(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+
+	expect(secondRender.container.textContent).not.toContain(
+		"Copy clears persistence."
+	);
+	expect(secondRender.container.textContent).not.toContain("Copy review");
+
+	act(() => {
+		secondRender.root.unmount();
+	});
+});
+
+test("does not persist in-progress inline Draft Review Comment form text", () => {
+	const repositoryContext = reviewSession().context.repository;
+	const firstRender = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+
+	act(() => {
+		firstRender.container
+			.querySelector<HTMLButtonElement>(
+				'button[aria-label="Select added line"]'
+			)
+			?.click();
+	});
+	const textarea = firstRender.container.querySelector<HTMLTextAreaElement>(
+		'textarea[aria-label="Draft review comment"]'
+	);
+	if (textarea === null) {
+		throw new Error("Expected a Draft Review Comment form.");
+	}
+	act(() => {
+		textarea.value = "Do not persist this half-written text.";
+		textarea.dispatchEvent(new window.InputEvent("input", { bubbles: true }));
+	});
+
+	act(() => {
+		firstRender.root.unmount();
+	});
+
+	const secondRender = renderInCurrentInteractiveWindow(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+
+	expect(secondRender.container.textContent).not.toContain(
+		"Do not persist this half-written text."
+	);
+	expect(
+		secondRender.container.querySelector(
+			'textarea[aria-label="Draft review comment"]'
+		)
+	).toBeNull();
+
+	act(() => {
+		secondRender.root.unmount();
 	});
 });
 

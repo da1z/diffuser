@@ -3,6 +3,7 @@ import { FileDiff, type FileDiffProps } from "@pierre/diffs/react";
 import { IconCheckboxFill, IconChevronSm, IconSquircleLg } from "@pierre/icons";
 import {
 	type ComponentType,
+	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
@@ -31,6 +32,12 @@ import {
 } from "./diffuser/protocol";
 import { reviewSessionFromSessionEndpointPayload } from "./diffuser/session-endpoint-payload";
 import type { ReviewSession } from "./diffuser/workflow";
+import {
+	clearPersistedDraftReviewComments,
+	loadPersistedDraftReviewComments,
+	type RepositoryContext,
+	savePersistedDraftReviewComments,
+} from "./local-comment-persistence";
 import { patchFileNavigatorModelFor } from "./patch-file-navigator";
 import {
 	type PatchFileNavigatorFileMetadataByKey,
@@ -40,6 +47,7 @@ import type {
 	DraftReviewCommentAnchor,
 	SubmittedDraftReviewComment,
 } from "./review-comments";
+import { draftReviewCommentStateWithSubmittedComments } from "./review-comments";
 import "./index.css";
 
 export interface AppProps {
@@ -405,22 +413,45 @@ const notifyReviewSessionPageHidden = () => {
 export const ContinuousPatchDiff = ({
 	patch,
 	DiffRenderer = FileDiff,
+	repositoryContext,
 }: {
 	readonly patch: string;
 	readonly DiffRenderer?: ComponentType<FileDiffRendererProps>;
+	readonly repositoryContext?: RepositoryContext;
 }) => {
-	const [interaction, setInteraction] = useState(() =>
-		createContinuousDiffViewInteraction(patch)
-	);
+	const persistenceScopeForCurrentPatch = useCallback(() => {
+		if (repositoryContext === undefined || typeof window === "undefined") {
+			return;
+		}
+
+		return {
+			patch,
+			repositoryContext,
+			storage: window.localStorage,
+		};
+	}, [patch, repositoryContext]);
+	const createInteraction = useCallback(() => {
+		const persistenceScope = persistenceScopeForCurrentPatch();
+
+		return createContinuousDiffViewInteraction(
+			patch,
+			draftReviewCommentStateWithSubmittedComments(
+				persistenceScope === undefined
+					? []
+					: loadPersistedDraftReviewComments(persistenceScope)
+			)
+		);
+	}, [patch, persistenceScopeForCurrentPatch]);
+	const [interaction, setInteraction] = useState(() => createInteraction());
 	const [selectedNavigatorFileKey, setSelectedNavigatorFileKey] = useState<
 		string | undefined
 	>();
 	const fileElements = useRef(new Map<string, HTMLElement>());
 	useEffect(() => {
-		setInteraction(createContinuousDiffViewInteraction(patch));
+		setInteraction(createInteraction());
 		setSelectedNavigatorFileKey(undefined);
 		fileElements.current.clear();
-	}, [patch]);
+	}, [createInteraction]);
 	useEffect(() => {
 		if (selectedNavigatorFileKey === undefined) {
 			return;
@@ -446,27 +477,73 @@ export const ContinuousPatchDiff = ({
 		setInteraction(cancelContinuousDiffViewDraftReviewComment);
 	};
 	const submitActiveDraftReviewComment = (body: string) => {
-		setInteraction((state) =>
-			submitContinuousDiffViewDraftReviewComment(state, body)
+		setInteraction((state) => {
+			const next = submitContinuousDiffViewDraftReviewComment(state, body);
+			const scope = persistenceScopeForCurrentPatch();
+
+			if (scope !== undefined) {
+				savePersistedDraftReviewComments(
+					scope,
+					next.draftReviewCommentState.submittedComments
+				);
+			}
+
+			return next;
+		});
+	};
+	const mirrorSubmittedDraftReviewCommentsToPersistence = (
+		next: ContinuousDiffViewInteraction
+	) => {
+		const scope = persistenceScopeForCurrentPatch();
+
+		if (scope === undefined) {
+			return;
+		}
+
+		if (next.draftReviewCommentState.submittedComments.length === 0) {
+			clearPersistedDraftReviewComments(scope);
+			return;
+		}
+
+		savePersistedDraftReviewComments(
+			scope,
+			next.draftReviewCommentState.submittedComments
 		);
 	};
 	const deleteDraftReviewComment = (commentId: string) => {
-		setInteraction((state) =>
-			deleteContinuousDiffViewDraftReviewComment(state, commentId)
-		);
+		setInteraction((state) => {
+			const next = deleteContinuousDiffViewDraftReviewComment(state, commentId);
+
+			mirrorSubmittedDraftReviewCommentsToPersistence(next);
+
+			return next;
+		});
 	};
 	const copyReview = () => {
 		copyContinuousDiffViewReview(interaction, navigator.clipboard).then(
-			setInteraction
+			(next) => {
+				if (next.copyError === undefined) {
+					mirrorSubmittedDraftReviewCommentsToPersistence(next);
+				}
+
+				setInteraction(next);
+			}
 		);
 	};
 	const confirmClearDraftReviewComments = () => {
-		setInteraction((state) =>
-			confirmClearContinuousDiffViewDraftReviewComments(state, (message) => {
-				// biome-ignore lint/suspicious/noAlert: The PRD requires the browser confirmation dialog for clearing draft comments.
-				return window.confirm(message);
-			})
-		);
+		setInteraction((state) => {
+			const next = confirmClearContinuousDiffViewDraftReviewComments(
+				state,
+				(message) => {
+					// biome-ignore lint/suspicious/noAlert: The PRD requires the browser confirmation dialog for clearing draft comments.
+					return window.confirm(message);
+				}
+			);
+
+			mirrorSubmittedDraftReviewCommentsToPersistence(next);
+
+			return next;
+		});
 	};
 	const expandFileIfCollapsed = (fileKey: string) => {
 		setInteraction((state) => {
@@ -632,7 +709,10 @@ const ReviewSessionView = ({
 	<main className="review-app">
 		<ReviewHeader command={session.context.command} />
 		<section aria-label="Patch" className="review-patch">
-			<ContinuousPatchDiff patch={session.patch} />
+			<ContinuousPatchDiff
+				patch={session.patch}
+				repositoryContext={session.context.repository}
+			/>
 		</section>
 	</main>
 );

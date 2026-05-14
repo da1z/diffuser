@@ -85,7 +85,8 @@ const draftReviewCommentCopyClearStateFor = (
 });
 
 export const createContinuousDiffViewInteraction = (
-	patch: string
+	patch: string,
+	initialDraftReviewCommentState: DraftReviewCommentState = emptyDraftReviewCommentState()
 ): ContinuousDiffViewInteraction => {
 	const fileDiffs = parsedFileDiffsFor(patch);
 
@@ -93,7 +94,7 @@ export const createContinuousDiffViewInteraction = (
 		activeDraftReviewCommentAnchor: undefined,
 		activeDraftReviewCommentSelection: null,
 		copyError: undefined,
-		draftReviewCommentState: emptyDraftReviewCommentState(),
+		draftReviewCommentState: initialDraftReviewCommentState,
 		files: fileDiffs.map((fileDiff, index) => ({
 			fileDiff,
 			index,

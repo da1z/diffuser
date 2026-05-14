@@ -34,6 +34,30 @@ export const emptyDraftReviewCommentState = (): DraftReviewCommentState => ({
 	submittedComments: [],
 });
 
+const draftReviewCommentIdPattern = /^draft-review-comment-(\d+)$/;
+
+const commentIdNumber = (commentId: string) => {
+	const match = draftReviewCommentIdPattern.exec(commentId);
+
+	return match === null ? 0 : Number(match[1]);
+};
+
+export const draftReviewCommentStateWithSubmittedComments = (
+	submittedComments: readonly SubmittedDraftReviewComment[]
+): DraftReviewCommentState => {
+	const highestCommentNumber = Math.max(
+		0,
+		...submittedComments.map((comment) =>
+			Math.max(comment.order, commentIdNumber(comment.id))
+		)
+	);
+
+	return {
+		nextCommentId: highestCommentNumber + 1,
+		submittedComments,
+	};
+};
+
 export const addSubmittedDraftReviewComment = (
 	state: DraftReviewCommentState,
 	{
