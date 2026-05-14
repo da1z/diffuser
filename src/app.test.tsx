@@ -217,18 +217,19 @@ const discardDraftReviewCommentContaining = (
 	container: Element,
 	bodySubstring: string
 ) => {
-	const discardButton = Array.from(
+	const discardButtons = Array.from(
 		container.querySelectorAll<HTMLButtonElement>(
 			'button[aria-label="Discard draft review comment"]'
 		)
-	).find((button) =>
-		button
-			.closest(".draft-review-comment")
-			?.textContent?.includes(bodySubstring)
 	);
+	const matchingDiscard = discardButtons.find((button) => {
+		const draftCommentRoot = button.closest(".draft-review-comment");
+
+		return draftCommentRoot?.textContent?.includes(bodySubstring) ?? false;
+	});
 
 	act(() => {
-		discardButton?.click();
+		matchingDiscard?.click();
 	});
 };
 
@@ -930,7 +931,7 @@ test("removes persisted Draft Review Comments after successful Review Summary co
 
 test("keeps persisted Draft Review Comments after failed Review Summary copy", async () => {
 	const repositoryContext = reviewSession().context.repository;
-	const firstRender = renderInteractive(
+	const { container, root } = renderInteractive(
 		<ContinuousPatchDiff
 			DiffRenderer={FileDiffProbe}
 			patch={multiFilePatch}
@@ -942,18 +943,18 @@ test("keeps persisted Draft Review Comments after failed Review Summary copy", a
 	});
 
 	submitDraftReviewComment(
-		firstRender.container,
+		container,
 		"Failed copy preserves persistence mirror."
 	);
 
-	await clickCopyReview(firstRender.container);
-	expect(firstRender.container.textContent).toContain(
+	await clickCopyReview(container);
+	expect(container.textContent).toContain(
 		"Failed copy preserves persistence mirror."
 	);
-	expect(firstRender.container.textContent).toContain(copyReviewErrorMessage);
+	expect(container.textContent).toContain(copyReviewErrorMessage);
 
 	act(() => {
-		firstRender.root.unmount();
+		root.unmount();
 	});
 
 	const secondRender = renderInCurrentInteractiveWindow(
@@ -976,7 +977,7 @@ test("keeps persisted Draft Review Comments after failed Review Summary copy", a
 
 test("removes one persisted Draft Review Comment when discarding that comment", () => {
 	const repositoryContext = reviewSession().context.repository;
-	const firstRender = renderInteractive(
+	const { container, root } = renderInteractive(
 		<ContinuousPatchDiff
 			DiffRenderer={FileDiffProbe}
 			patch={multiFilePatch}
@@ -984,27 +985,22 @@ test("removes one persisted Draft Review Comment when discarding that comment", 
 		/>
 	);
 
-	submitDraftReviewComment(firstRender.container, "Keep after reload.", {
+	submitDraftReviewComment(container, "Keep after reload.", {
 		fileName: "a.txt",
 	});
-	submitDraftReviewComment(firstRender.container, "Discard before reload.", {
+	submitDraftReviewComment(container, "Discard before reload.", {
 		fileName: "b.txt",
 	});
 
-	expect(firstRender.container.textContent).toContain("2 draft comments");
+	expect(container.textContent).toContain("2 draft comments");
 
-	discardDraftReviewCommentContaining(
-		firstRender.container,
-		"Discard before reload."
-	);
+	discardDraftReviewCommentContaining(container, "Discard before reload.");
 
-	expect(firstRender.container.textContent).toContain("Keep after reload.");
-	expect(firstRender.container.textContent).not.toContain(
-		"Discard before reload."
-	);
+	expect(container.textContent).toContain("Keep after reload.");
+	expect(container.textContent).not.toContain("Discard before reload.");
 
 	act(() => {
-		firstRender.root.unmount();
+		root.unmount();
 	});
 
 	const secondRender = renderInCurrentInteractiveWindow(
@@ -1031,7 +1027,7 @@ test("removes persisted Draft Review Comments after clear-all confirms", () => {
 	let shouldConfirm = false;
 	const repositoryContext = reviewSession().context.repository;
 
-	const firstRender = renderInteractive(
+	const { container, root } = renderInteractive(
 		<ContinuousPatchDiff
 			DiffRenderer={FileDiffProbe}
 			patch={multiFilePatch}
@@ -1048,35 +1044,34 @@ test("removes persisted Draft Review Comments after clear-all confirms", () => {
 		},
 	});
 
-	submitDraftReviewComment(firstRender.container, "Clear resets persistence.");
+	const clearDraftReviewCommentsButton = () =>
+		clearDraftReviewCommentsButtonFor(container);
+
+	submitDraftReviewComment(container, "Clear resets persistence.");
 
 	act(() => {
-		clearDraftReviewCommentsButtonFor(firstRender.container)?.click();
+		clearDraftReviewCommentsButton()?.click();
 	});
 
-	expect(firstRender.container.textContent).toContain(
-		"Clear resets persistence."
-	);
+	expect(container.textContent).toContain("Clear resets persistence.");
 	expect(confirmationMessages).toEqual([
 		clearDraftReviewCommentsConfirmationMessage,
 	]);
 
 	shouldConfirm = true;
 	act(() => {
-		clearDraftReviewCommentsButtonFor(firstRender.container)?.click();
+		clearDraftReviewCommentsButton()?.click();
 	});
 
 	expect(confirmationMessages).toEqual([
 		clearDraftReviewCommentsConfirmationMessage,
 		clearDraftReviewCommentsConfirmationMessage,
 	]);
-	expect(firstRender.container.textContent).not.toContain(
-		"Clear resets persistence."
-	);
-	expect(firstRender.container.textContent).not.toContain("Copy review");
+	expect(container.textContent).not.toContain("Clear resets persistence.");
+	expect(container.textContent).not.toContain("Copy review");
 
 	act(() => {
-		firstRender.root.unmount();
+		root.unmount();
 	});
 
 	const secondRender = renderInCurrentInteractiveWindow(
