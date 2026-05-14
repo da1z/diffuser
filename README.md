@@ -13,6 +13,8 @@ Diffuser turns Git changes into a local browser-based review session. It runs
 Git-shaped commands, captures the resulting patch, and opens a read-only
 localhost review UI for that snapshot.
 
+![Diffuser review UI](docs/assets/diffuser-review.png)
+
 The goal is to make local code review feel closer to a hosted review tool while
 keeping everything on your machine:
 
