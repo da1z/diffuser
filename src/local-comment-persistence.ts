@@ -33,7 +33,7 @@ type RawPersistedDraftReviewClassification =
 	| {
 			readonly kind: "preserve";
 			readonly reason: "malformed" | "unsupported-version";
-		};
+	  };
 
 const persistedDraftReviewCommentsSchemaVersion = 1;
 

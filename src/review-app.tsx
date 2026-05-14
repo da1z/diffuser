@@ -58,7 +58,7 @@ type PatchPersistence =
 	| {
 			readonly kind: "ready";
 			readonly scope: DraftReviewCommentPersistenceScope;
-		};
+	  };
 
 type PersistenceWarningSync =
 	| { readonly kind: "unchanged" }
@@ -69,7 +69,7 @@ const draftReviewCommentPersistenceFailureMessage =
 
 const persistenceWarningUnlessOk = (ok: boolean): string | undefined => {
 	if (ok) {
-		return undefined;
+		return;
 	}
 
 	return draftReviewCommentPersistenceFailureMessage;
