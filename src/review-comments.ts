@@ -42,20 +42,21 @@ const commentIdNumber = (commentId: string) => {
 	return match === null ? 0 : Number(match[1]);
 };
 
-const submittedDraftReviewCommentSubmissionSequenceCompare = (
+const compareSubmittedDraftReviewCommentsByOrder = (
 	left: SubmittedDraftReviewComment,
 	right: SubmittedDraftReviewComment
 ) => {
-	const byOrder = left.order - right.order;
+	const orderDifference = left.order - right.order;
 
-	if (byOrder !== 0) {
-		return byOrder;
+	if (orderDifference !== 0) {
+		return orderDifference;
 	}
 
-	const byIdNumber = commentIdNumber(left.id) - commentIdNumber(right.id);
+	const idNumberDifference =
+		commentIdNumber(left.id) - commentIdNumber(right.id);
 
-	if (byIdNumber !== 0) {
-		return byIdNumber;
+	if (idNumberDifference !== 0) {
+		return idNumberDifference;
 	}
 
 	return left.id.localeCompare(right.id);
@@ -65,7 +66,7 @@ export const draftReviewCommentStateWithSubmittedComments = (
 	submittedComments: readonly SubmittedDraftReviewComment[]
 ): DraftReviewCommentState => {
 	const normalizedSubmittedComments = [...submittedComments].sort(
-		submittedDraftReviewCommentSubmissionSequenceCompare
+		compareSubmittedDraftReviewCommentsByOrder
 	);
 
 	const highestCommentNumber = Math.max(
