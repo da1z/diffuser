@@ -22,6 +22,9 @@ export type PersistDraftReviewCommentsResult =
 	| { readonly ok: true }
 	| { readonly ok: false; readonly error: unknown };
 
+export const draftReviewCommentPersistenceFailureMessage =
+	"Draft comments could not be saved in this browser. They will be lost if you reload the page.";
+
 interface PersistedDraftReviewCommentsRecord {
 	readonly comments: readonly SubmittedDraftReviewComment[];
 	readonly version: 1;

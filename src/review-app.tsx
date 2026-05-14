@@ -12,19 +12,23 @@ import {
 import { flushSync } from "react-dom";
 import {
 	type BasicReviewUiInteraction,
+	basicReviewUiAfterDeleteSubmittedDraftReviewComment,
+	copyReviewSummaryThroughBasicReviewUi,
 	createBasicReviewUiInteractionFromPatch,
+	type DraftReviewCommentPersistenceMode,
+	draftReviewCommentPersistenceFailureMessage,
 	type LocalCommentPersistenceLoadAdapter,
+	mirrorSubmittedDraftReviewCommentsSync,
+	type PersistenceMirrorSync,
+	requestClearSubmittedDraftReviewComments,
 } from "./basic-review-ui-interaction";
 import { formatCommentAnchorLocation } from "./comment-anchor-location";
 import {
 	type ContinuousDiffViewInteraction,
 	cancelContinuousDiffViewDraftReviewComment,
-	confirmClearContinuousDiffViewDraftReviewComments,
 	continuousDiffViewDraftReviewCommentCountsByFileKey,
 	continuousDiffViewFileState,
 	continuousDiffViewSelectedLinesForFile,
-	copyContinuousDiffViewReview,
-	deleteContinuousDiffViewDraftReviewComment,
 	markContinuousDiffViewFileViewed,
 	selectContinuousDiffViewLines,
 	submitContinuousDiffViewDraftReviewComment,
@@ -37,8 +41,6 @@ import {
 import { reviewSessionFromSessionEndpointPayload } from "./diffuser/session-endpoint-payload";
 import type { ReviewSession } from "./diffuser/workflow";
 import {
-	clearPersistedDraftReviewComments,
-	type DraftReviewCommentPersistenceScope,
 	loadPersistedDraftReviewComments,
 	type RepositoryContext,
 	savePersistedDraftReviewComments,
@@ -54,46 +56,30 @@ import type {
 } from "./review-comments";
 import "./index.css";
 
-type PatchPersistence =
-	| { readonly kind: "none" }
-	| { readonly kind: "storage-unavailable" }
-	| {
-			readonly kind: "ready";
-			readonly scope: DraftReviewCommentPersistenceScope;
-	  };
-
-type PersistenceWarningSync =
-	| { readonly kind: "unchanged" }
-	| { readonly kind: "set"; readonly message: string | undefined };
-
 type DraftReviewCommentSubmitPersistenceOutcome = "fail" | "ok" | "skipped";
 
-const persistenceWarningAfterPersistenceMirrorSync = (
+const persistenceWarningAfterDraftReviewSubmitOutcome = (
 	previousWarning: string | undefined,
-	sync: PersistenceWarningSync
+	outcome: DraftReviewCommentSubmitPersistenceOutcome
 ): string | undefined => {
-	if (sync.kind === "set") {
-		return sync.message;
+	switch (outcome) {
+		case "ok":
+			return;
+		case "fail":
+			return draftReviewCommentPersistenceFailureMessage;
+		case "skipped":
+			return previousWarning;
+		default:
+			throw new Error(
+				"Unexpected Draft Review Comment submit persistence outcome."
+			);
 	}
-
-	return previousWarning;
-};
-
-const draftReviewCommentPersistenceFailureMessage =
-	"Draft comments could not be saved in this browser. They will be lost if you reload the page.";
-
-const persistenceWarningUnlessOk = (ok: boolean): string | undefined => {
-	if (ok) {
-		return;
-	}
-
-	return draftReviewCommentPersistenceFailureMessage;
 };
 
 const patchPersistenceFor = (
 	patch: string,
 	repositoryContext: RepositoryContext | undefined
-): PatchPersistence => {
+): DraftReviewCommentPersistenceMode => {
 	if (repositoryContext === undefined || typeof window === "undefined") {
 		return { kind: "none" };
 	}
@@ -113,7 +99,7 @@ const patchPersistenceFor = (
 };
 
 const draftReviewCommentSubmitPersistenceOutcome = (
-	persistence: PatchPersistence,
+	persistence: DraftReviewCommentPersistenceMode,
 	submittedComments: readonly SubmittedDraftReviewComment[]
 ): DraftReviewCommentSubmitPersistenceOutcome => {
 	if (persistence.kind === "ready") {
@@ -130,21 +116,6 @@ const draftReviewCommentSubmitPersistenceOutcome = (
 	}
 
 	return "skipped";
-};
-
-const persistenceWarningAfterDraftReviewSubmitOutcome = (
-	previousWarning: string | undefined,
-	outcome: DraftReviewCommentSubmitPersistenceOutcome
-): string | undefined => {
-	if (outcome === "ok") {
-		return;
-	}
-
-	if (outcome === "fail") {
-		return draftReviewCommentPersistenceFailureMessage;
-	}
-
-	return previousWarning;
 };
 
 export interface AppProps {
@@ -613,107 +584,52 @@ export const ContinuousPatchDiff = ({
 		});
 	};
 	const mirrorSubmittedDraftReviewCommentsToPersistence = (
-		next: ContinuousDiffViewInteraction
-	): PersistenceWarningSync => {
-		const persistence = resolvePersistence();
-
-		if (persistence.kind === "none") {
-			return { kind: "unchanged" };
-		}
-
-		if (persistence.kind === "storage-unavailable") {
-			return {
-				kind: "set",
-				message:
-					next.draftReviewCommentState.submittedComments.length > 0
-						? draftReviewCommentPersistenceFailureMessage
-						: undefined,
-			};
-		}
-
-		const scope = persistence.scope;
-
-		if (next.draftReviewCommentState.submittedComments.length === 0) {
-			const cleared = clearPersistedDraftReviewComments(scope);
-
-			return {
-				kind: "set",
-				message: persistenceWarningUnlessOk(cleared.ok),
-			};
-		}
-
-		const saved = savePersistedDraftReviewComments(
-			scope,
-			next.draftReviewCommentState.submittedComments
+		submittedComments: readonly SubmittedDraftReviewComment[]
+	): PersistenceMirrorSync =>
+		mirrorSubmittedDraftReviewCommentsSync(
+			resolvePersistence(),
+			submittedComments
 		);
-
-		return {
-			kind: "set",
-			message: persistenceWarningUnlessOk(saved.ok),
-		};
-	};
 	const deleteDraftReviewComment = (commentId: string) => {
 		flushSync(() => {
-			setBasicReviewUi((b) => {
-				const nextView = deleteContinuousDiffViewDraftReviewComment(
-					b.continuousDiffView,
-					commentId
-				);
-				const sync = mirrorSubmittedDraftReviewCommentsToPersistence(nextView);
-
-				return {
-					continuousDiffView: nextView,
-					persistenceWarning: persistenceWarningAfterPersistenceMirrorSync(
-						b.persistenceWarning,
-						sync
-					),
-				};
-			});
+			setBasicReviewUi((b) =>
+				basicReviewUiAfterDeleteSubmittedDraftReviewComment(
+					b,
+					commentId,
+					resolvePersistence()
+				)
+			);
 		});
 	};
 	const copyReview = () => {
-		copyContinuousDiffViewReview(interaction, navigator.clipboard).then(
-			(nextView) => {
-				flushSync(() => {
-					setBasicReviewUi((b) => {
-						let persistenceWarning = b.persistenceWarning;
-
-						if (nextView.copyError === undefined) {
-							persistenceWarning = persistenceWarningAfterPersistenceMirrorSync(
-								b.persistenceWarning,
-								mirrorSubmittedDraftReviewCommentsToPersistence(nextView)
-							);
-						}
-
-						return {
-							continuousDiffView: nextView,
-							persistenceWarning,
-						};
-					});
-				});
+		copyReviewSummaryThroughBasicReviewUi(
+			basicReviewUi,
+			navigator.clipboard ?? undefined,
+			{
+				mirrorSubmittedComments:
+					mirrorSubmittedDraftReviewCommentsToPersistence,
 			}
-		);
+		).then((next) => {
+			flushSync(() => {
+				setBasicReviewUi(next);
+			});
+		});
 	};
 	const confirmClearDraftReviewComments = () => {
 		flushSync(() => {
-			setBasicReviewUi((b) => {
-				const nextView = confirmClearContinuousDiffViewDraftReviewComments(
-					b.continuousDiffView,
+			setBasicReviewUi((b) =>
+				requestClearSubmittedDraftReviewComments(
+					b,
 					(message) => {
 						// biome-ignore lint/suspicious/noAlert: The PRD requires the browser confirmation dialog for clearing draft comments.
 						return window.confirm(message);
-					}
-				);
-				const sync = mirrorSubmittedDraftReviewCommentsToPersistence(nextView);
-
-				return {
-					continuousDiffView: nextView,
-					persistenceWarning: persistenceWarningAfterPersistenceMirrorSync(
-						b.persistenceWarning,
-						sync
-					),
-				};
-			});
+					},
+					(nextView) =>
+						mirrorSubmittedDraftReviewCommentsToPersistence(
+							nextView.draftReviewCommentState.submittedComments
+						)
+				)
+			);
 		});
 	};
 	const expandFileIfCollapsed = (fileKey: string) => {

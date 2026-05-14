@@ -3,7 +3,8 @@ import { parsePatchFiles } from "@pierre/diffs";
 import type { FileDiffMetadata } from "@pierre/diffs/react";
 
 import {
-	confirmClearDraftReviewComments,
+	clearDraftReviewComments,
+	clearDraftReviewCommentsConfirmationMessage,
 	copyDraftReviewCommentsToClipboard,
 	type DraftReviewCommentCopyClearState,
 	type ReviewSummaryClipboard,
@@ -68,7 +69,7 @@ export const cancelContinuousDiffViewDraftReviewComment = (
 	interaction: ContinuousDiffViewInteraction
 ): ContinuousDiffViewInteraction => cancelActiveDraftReviewComment(interaction);
 
-const applyDraftReviewCommentCopyClearState = (
+export const continuousDiffViewWithCopyClearState = (
 	interaction: ContinuousDiffViewInteraction,
 	copyClearState: DraftReviewCommentCopyClearState
 ): ContinuousDiffViewInteraction => ({
@@ -77,7 +78,7 @@ const applyDraftReviewCommentCopyClearState = (
 	draftReviewCommentState: copyClearState.draftReviewCommentState,
 });
 
-const draftReviewCommentCopyClearStateFor = (
+export const draftReviewCommentCopyClearStateFor = (
 	interaction: ContinuousDiffViewInteraction
 ): DraftReviewCommentCopyClearState => ({
 	copyError: interaction.copyError,
@@ -252,7 +253,7 @@ export const copyContinuousDiffViewReview = async (
 	interaction: ContinuousDiffViewInteraction,
 	clipboard: ReviewSummaryClipboard | undefined
 ): Promise<ContinuousDiffViewInteraction> =>
-	applyDraftReviewCommentCopyClearState(
+	continuousDiffViewWithCopyClearState(
 		interaction,
 		await copyDraftReviewCommentsToClipboard(
 			draftReviewCommentCopyClearStateFor(interaction),
@@ -260,14 +261,21 @@ export const copyContinuousDiffViewReview = async (
 		)
 	);
 
+export const clearContinuousDiffViewDraftReviewComments = (
+	interaction: ContinuousDiffViewInteraction
+): ContinuousDiffViewInteraction =>
+	continuousDiffViewWithCopyClearState(
+		interaction,
+		clearDraftReviewComments(draftReviewCommentCopyClearStateFor(interaction))
+	);
+
 export const confirmClearContinuousDiffViewDraftReviewComments = (
 	interaction: ContinuousDiffViewInteraction,
 	confirm: (message: string) => boolean
-): ContinuousDiffViewInteraction =>
-	applyDraftReviewCommentCopyClearState(
-		interaction,
-		confirmClearDraftReviewComments(
-			draftReviewCommentCopyClearStateFor(interaction),
-			confirm
-		)
-	);
+): ContinuousDiffViewInteraction => {
+	if (!confirm(clearDraftReviewCommentsConfirmationMessage)) {
+		return interaction;
+	}
+
+	return clearContinuousDiffViewDraftReviewComments(interaction);
+};

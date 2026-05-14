@@ -5,14 +5,12 @@ import {
 	continuousDiffViewDraftReviewCommentCountForFile,
 	continuousDiffViewFileState,
 	continuousDiffViewSelectedLinesForFile,
-	copyContinuousDiffViewReview,
 	createContinuousDiffViewInteraction,
 	markContinuousDiffViewFileViewed,
 	selectContinuousDiffViewLines,
 	submitContinuousDiffViewDraftReviewComment,
 	toggleContinuousDiffViewFileCollapsed,
 } from "./continuous-diff-view-interaction";
-import { copyReviewErrorMessage } from "./draft-review-comment-copy-clear-policy";
 import { draftReviewCommentStateWithSubmittedComments } from "./review-comments";
 
 const multiFilePatch = `diff --git a/a.txt b/a.txt
@@ -248,10 +246,9 @@ test("normalizes persisted comment array order and avoids identifier collisions 
 	]);
 });
 
-test("owns Review Summary copy and clear confirmation policy", async () => {
+test("owns clear confirmation policy for submitted Draft Review Comments", () => {
 	const initial = createContinuousDiffViewInteraction(multiFilePatch);
 	const [file] = initial.files;
-	const clipboardWrites: string[] = [];
 
 	if (file === undefined) {
 		throw new Error("Expected at least one parsed Patch file.");
@@ -266,33 +263,13 @@ test("owns Review Summary copy and clear confirmation policy", async () => {
 		selected,
 		"Please simplify this branch."
 	);
-	const copied = await copyContinuousDiffViewReview(submitted, {
-		writeText: (text) => {
-			clipboardWrites.push(text);
-
-			return Promise.resolve();
-		},
-	});
-
-	expect(clipboardWrites).toEqual([
-		`a.txt:1 [new]
-Please simplify this branch.`,
-	]);
-	expect(copied.draftReviewCommentState.submittedComments).toEqual([]);
-	expect(copied.copyError).toBeUndefined();
-
-	const failed = await copyContinuousDiffViewReview(submitted, {
-		writeText: () => Promise.reject(new Error("Clipboard blocked.")),
-	});
-
-	expect(failed.draftReviewCommentState.submittedComments).toHaveLength(1);
-	expect(failed.copyError).toBe(copyReviewErrorMessage);
 
 	const rejectedClear = confirmClearContinuousDiffViewDraftReviewComments(
 		submitted,
 		() => false
 	);
 
+	expect(rejectedClear).toBe(submitted);
 	expect(rejectedClear.draftReviewCommentState.submittedComments).toHaveLength(
 		1
 	);

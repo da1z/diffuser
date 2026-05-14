@@ -55,7 +55,10 @@ export const copyDraftReviewCommentsToClipboard = async (
 export const confirmClearDraftReviewComments = (
 	state: DraftReviewCommentCopyClearState,
 	confirm: (message: string) => boolean
-): DraftReviewCommentCopyClearState =>
-	confirm(clearDraftReviewCommentsConfirmationMessage)
-		? clearDraftReviewComments(state)
-		: state;
+): DraftReviewCommentCopyClearState => {
+	if (!confirm(clearDraftReviewCommentsConfirmationMessage)) {
+		return state;
+	}
+
+	return clearDraftReviewComments(state);
+};
