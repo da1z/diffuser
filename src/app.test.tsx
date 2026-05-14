@@ -898,6 +898,7 @@ test("does not restore submitted Draft Review Comments for a different Repositor
 		root: "/repo-beta",
 		workingDirectory: "/repo-beta",
 	};
+	const submittedBody = "Scoped to Repository Context alpha.";
 
 	const firstRender = renderInteractive(
 		<ContinuousPatchDiff
@@ -907,10 +908,7 @@ test("does not restore submitted Draft Review Comments for a different Repositor
 		/>
 	);
 
-	submitDraftReviewComment(
-		firstRender.container,
-		"Scoped to Repository Context alpha."
-	);
+	submitDraftReviewComment(firstRender.container, submittedBody);
 
 	act(() => {
 		firstRender.root.unmount();
@@ -924,9 +922,7 @@ test("does not restore submitted Draft Review Comments for a different Repositor
 		/>
 	);
 
-	expect(secondRender.container.textContent).not.toContain(
-		"Scoped to Repository Context alpha."
-	);
+	expect(secondRender.container.textContent).not.toContain(submittedBody);
 	expect(
 		secondRender.container.querySelectorAll(".draft-review-comment")
 	).toHaveLength(0);
@@ -938,7 +934,8 @@ test("does not restore submitted Draft Review Comments for a different Repositor
 
 test("does not restore submitted Draft Review Comments when the complete captured Patch text changes", () => {
 	const repositoryContext = reviewSession().context.repository;
-	const patchVariant = `${multiFilePatch}\n`;
+	const patchWithTrailingNewline = `${multiFilePatch}\n`;
+	const submittedBody = "Tied to exact patch bytes.";
 
 	const firstRender = renderInteractive(
 		<ContinuousPatchDiff
@@ -948,7 +945,7 @@ test("does not restore submitted Draft Review Comments when the complete capture
 		/>
 	);
 
-	submitDraftReviewComment(firstRender.container, "Tied to exact patch bytes.");
+	submitDraftReviewComment(firstRender.container, submittedBody);
 
 	act(() => {
 		firstRender.root.unmount();
@@ -957,14 +954,12 @@ test("does not restore submitted Draft Review Comments when the complete capture
 	const secondRender = renderInCurrentInteractiveWindow(
 		<ContinuousPatchDiff
 			DiffRenderer={FileDiffProbe}
-			patch={patchVariant}
+			patch={patchWithTrailingNewline}
 			repositoryContext={repositoryContext}
 		/>
 	);
 
-	expect(secondRender.container.textContent).not.toContain(
-		"Tied to exact patch bytes."
-	);
+	expect(secondRender.container.textContent).not.toContain(submittedBody);
 	expect(
 		secondRender.container.querySelectorAll(".draft-review-comment")
 	).toHaveLength(0);
@@ -977,7 +972,7 @@ test("does not restore submitted Draft Review Comments when the complete capture
 test("keeps persisted Draft Review Comments out of serialized Session Endpoint payloads", () => {
 	const session = reviewSession({ patch: multiFilePatch });
 	const repositoryContext = session.context.repository;
-	const probe =
+	const persistedDraftBody =
 		"Issue #44 persisted draft body must stay out of session endpoint JSON.";
 	const { container, root } = renderInteractive(
 		<ContinuousPatchDiff
@@ -987,13 +982,13 @@ test("keeps persisted Draft Review Comments out of serialized Session Endpoint p
 		/>
 	);
 
-	submitDraftReviewComment(container, probe);
+	submitDraftReviewComment(container, persistedDraftBody);
 
-	expect(container.textContent).toContain(probe);
+	expect(container.textContent).toContain(persistedDraftBody);
 
 	const payload = sessionEndpointPayloadFromReviewSession(session);
 
-	expect(JSON.stringify(payload)).not.toContain(probe);
+	expect(JSON.stringify(payload)).not.toContain(persistedDraftBody);
 	expect(Object.keys(payload).sort()).toEqual([
 		"context",
 		"id",
