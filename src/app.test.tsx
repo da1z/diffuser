@@ -27,6 +27,12 @@ import {
 	loadReviewSession,
 } from "./review-app";
 
+const viewedButtonSingleLineLayoutClassPatterns = [
+	/\binline-flex\b/,
+	/\bshrink-0\b/,
+	/\bwhitespace-nowrap\b/,
+] as const;
+
 const multiFilePatch = `diff --git a/a.txt b/a.txt
 --- a/a.txt
 +++ b/a.txt
@@ -710,6 +716,36 @@ test("groups file header metadata controls with Pierre header metadata", () => {
 	expect(
 		uncommentedBMetadata?.querySelector(".draft-review-comment-file-count")
 	).toBeNull();
+
+	act(() => {
+		root.unmount();
+	});
+});
+
+test("keeps Viewed file control icon and label on one line for long paths", () => {
+	const longPath =
+		"src/Web/Controllers/Launchpad/LaunchpadTasksApiController.Mapping.cs";
+	const longPathPatch = `diff --git a/${longPath} b/${longPath}
+--- a/${longPath}
++++ b/${longPath}
+@@ -1 +1 @@
+-old
++new
+`;
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff DiffRenderer={FileDiffProbe} patch={longPathPatch} />
+	);
+	const viewedButton = viewedControlFor(container, longPath);
+
+	expect(viewedButton).not.toBeNull();
+	if (viewedButton === null) {
+		throw new Error("Expected Viewed button for long path Patch header.");
+	}
+	const layoutClassNames = viewedButton.className;
+
+	for (const pattern of viewedButtonSingleLineLayoutClassPatterns) {
+		expect(layoutClassNames).toMatch(pattern);
+	}
 
 	act(() => {
 		root.unmount();

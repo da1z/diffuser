@@ -216,6 +216,9 @@ interface ViewedButtonProps {
 	readonly onClick: () => void;
 }
 
+const viewedButtonLayoutClassNames =
+	"inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border py-1 pr-2 pl-1 text-xs transition";
+
 const ViewedButton = ({
 	"aria-label": ariaLabel,
 	className,
@@ -225,7 +228,7 @@ const ViewedButton = ({
 	<button
 		aria-label={ariaLabel}
 		aria-pressed={isViewed}
-		className={`flex cursor-pointer items-center gap-1.5 rounded-md border py-1 pr-2 pl-1 text-xs transition ${
+		className={`${viewedButtonLayoutClassNames} ${
 			isViewed
 				? "border-blue-400/50 bg-blue-500/25 text-blue-200"
 				: "border-white/20 bg-transparent text-white/70 hover:border-white/35 hover:bg-white/5 hover:text-white/85"
