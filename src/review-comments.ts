@@ -42,19 +42,43 @@ const commentIdNumber = (commentId: string) => {
 	return match === null ? 0 : Number(match[1]);
 };
 
+const compareSubmittedDraftReviewCommentsByOrder = (
+	left: SubmittedDraftReviewComment,
+	right: SubmittedDraftReviewComment
+) => {
+	const orderDifference = left.order - right.order;
+
+	if (orderDifference !== 0) {
+		return orderDifference;
+	}
+
+	const idNumberDifference =
+		commentIdNumber(left.id) - commentIdNumber(right.id);
+
+	if (idNumberDifference !== 0) {
+		return idNumberDifference;
+	}
+
+	return left.id.localeCompare(right.id);
+};
+
 export const draftReviewCommentStateWithSubmittedComments = (
 	submittedComments: readonly SubmittedDraftReviewComment[]
 ): DraftReviewCommentState => {
+	const normalizedSubmittedComments = [...submittedComments].sort(
+		compareSubmittedDraftReviewCommentsByOrder
+	);
+
 	const highestCommentNumber = Math.max(
 		0,
-		...submittedComments.map((comment) =>
+		...normalizedSubmittedComments.map((comment) =>
 			Math.max(comment.order, commentIdNumber(comment.id))
 		)
 	);
 
 	return {
 		nextCommentId: highestCommentNumber + 1,
-		submittedComments,
+		submittedComments: normalizedSubmittedComments,
 	};
 };
 

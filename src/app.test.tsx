@@ -968,6 +968,105 @@ test("ignores future-version persistence bytes and does not overwrite them on sa
 	});
 });
 
+test("restores multiple Draft Review Comments on the same Comment Anchor in submission order", () => {
+	const repositoryContext = reviewSession().context.repository;
+	const firstRender = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+
+	submitDraftReviewComment(
+		firstRender.container,
+		"First note on the same anchor.",
+		{ fileName: "a.txt" }
+	);
+	submitDraftReviewComment(
+		firstRender.container,
+		"Second note on the same anchor.",
+		{ fileName: "a.txt" }
+	);
+
+	act(() => {
+		firstRender.root.unmount();
+	});
+
+	const secondRender = renderInCurrentInteractiveWindow(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+
+	expect(
+		Array.from(
+			secondRender.container.querySelectorAll(".draft-review-comment")
+		).map((element) => element.textContent ?? "")
+	).toEqual([
+		expect.stringContaining("First note on the same anchor."),
+		expect.stringContaining("Second note on the same anchor."),
+	]);
+	expect(secondRender.container.textContent).toContain("2 draft comments");
+
+	act(() => {
+		secondRender.root.unmount();
+	});
+});
+
+test("restores Draft Review Comments submitted out of Patch file order and copies a Patch-position Review Summary", async () => {
+	const repositoryContext = reviewSession().context.repository;
+	const firstRender = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+
+	submitDraftReviewComment(firstRender.container, "Comment on b first.", {
+		fileName: "b.txt",
+	});
+	submitDraftReviewComment(firstRender.container, "Comment on a second.", {
+		fileName: "a.txt",
+	});
+
+	act(() => {
+		firstRender.root.unmount();
+	});
+
+	const clipboardWrites: string[] = [];
+	const secondRender = renderInCurrentInteractiveWindow(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+
+	stubClipboard({
+		writeText: (text) => {
+			clipboardWrites.push(text);
+
+			return Promise.resolve();
+		},
+	});
+
+	await clickCopyReview(secondRender.container);
+
+	expect(clipboardWrites[0]).toBe(`a.txt:1 [new]
+Comment on a second.
+
+b.txt:1 [new]
+Comment on b first.`);
+
+	act(() => {
+		secondRender.root.unmount();
+	});
+});
+
 test("removes persisted Draft Review Comments after successful Review Summary copy", async () => {
 	const repositoryContext = reviewSession().context.repository;
 	const firstRender = renderInteractive(
