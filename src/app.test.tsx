@@ -9,6 +9,7 @@ import {
 	reviewSessionEndpoint,
 	reviewSessionShutdownEndpoint,
 } from "./diffuser/protocol";
+import { sessionEndpointPayloadFromReviewSession } from "./diffuser/session-endpoint-payload";
 import type { ReviewSession } from "./diffuser/workflow";
 import {
 	clearDraftReviewCommentsConfirmationMessage,
@@ -885,6 +886,134 @@ test("restores submitted Draft Review Comments for the same Repository Context a
 
 	act(() => {
 		secondRender.root.unmount();
+	});
+});
+
+test("does not restore submitted Draft Review Comments for a different Repository Context with identical Patch text", () => {
+	const repositoryContextAlpha = {
+		root: "/repo-alpha",
+		workingDirectory: "/repo-alpha",
+	};
+	const repositoryContextBeta = {
+		root: "/repo-beta",
+		workingDirectory: "/repo-beta",
+	};
+
+	const firstRender = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContextAlpha}
+		/>
+	);
+
+	submitDraftReviewComment(
+		firstRender.container,
+		"Scoped to Repository Context alpha."
+	);
+
+	act(() => {
+		firstRender.root.unmount();
+	});
+
+	const secondRender = renderInCurrentInteractiveWindow(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContextBeta}
+		/>
+	);
+
+	expect(secondRender.container.textContent).not.toContain(
+		"Scoped to Repository Context alpha."
+	);
+	expect(
+		secondRender.container.querySelectorAll(".draft-review-comment")
+	).toHaveLength(0);
+
+	act(() => {
+		secondRender.root.unmount();
+	});
+});
+
+test("does not restore submitted Draft Review Comments when the complete captured Patch text changes", () => {
+	const repositoryContext = reviewSession().context.repository;
+	const patchVariant = `${multiFilePatch}\n`;
+
+	const firstRender = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+
+	submitDraftReviewComment(firstRender.container, "Tied to exact patch bytes.");
+
+	act(() => {
+		firstRender.root.unmount();
+	});
+
+	const secondRender = renderInCurrentInteractiveWindow(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={patchVariant}
+			repositoryContext={repositoryContext}
+		/>
+	);
+
+	expect(secondRender.container.textContent).not.toContain(
+		"Tied to exact patch bytes."
+	);
+	expect(
+		secondRender.container.querySelectorAll(".draft-review-comment")
+	).toHaveLength(0);
+
+	act(() => {
+		secondRender.root.unmount();
+	});
+});
+
+test("keeps persisted Draft Review Comments out of serialized Session Endpoint payloads", () => {
+	const session = reviewSession({ patch: multiFilePatch });
+	const repositoryContext = session.context.repository;
+	const probe =
+		"Issue #44 persisted draft body must stay out of session endpoint JSON.";
+	const { container, root } = renderInteractive(
+		<ContinuousPatchDiff
+			DiffRenderer={FileDiffProbe}
+			patch={multiFilePatch}
+			repositoryContext={repositoryContext}
+		/>
+	);
+
+	submitDraftReviewComment(container, probe);
+
+	expect(container.textContent).toContain(probe);
+
+	const payload = sessionEndpointPayloadFromReviewSession(session);
+
+	expect(JSON.stringify(payload)).not.toContain(probe);
+	expect(Object.keys(payload).sort()).toEqual([
+		"context",
+		"id",
+		"kind",
+		"mode",
+		"patch",
+	]);
+	expect(Object.keys(payload.context).sort()).toEqual([
+		"args",
+		"capturedAt",
+		"command",
+		"repository",
+	]);
+	expect(Object.keys(payload.context.repository).sort()).toEqual([
+		"root",
+		"workingDirectory",
+	]);
+
+	act(() => {
+		root.unmount();
 	});
 });
 
