@@ -16,6 +16,8 @@ If an environment/setup problem, broken tool, missing permission, or other roadb
 
 Analyze the open issues and build a dependency graph. For each issue, determine whether it **blocks** or **is blocked by** any other open issue.
 
+Only consider implementation tasks that are explicitly marked `ready-for-agent`. Never plan work for PRDs, planning issues, or any issue/task that is not marked `ready-for-agent`.
+
 An issue B is **blocked by** issue A if:
 
 - B requires code or infrastructure that A introduces
